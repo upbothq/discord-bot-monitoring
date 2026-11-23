@@ -1,6 +1,6 @@
 {
 	"name": "@upbothq/discord-bot-monitoring",
-	"version": "0.1.0",
+	"version": "0.1.1",
 	"description": "Shard, interaction and REST monitoring for Discord bots built with discord.js",
 	"homepage": "https://github.com/upbothq/discord-bot-monitoring#readme",
 	"bugs": {
