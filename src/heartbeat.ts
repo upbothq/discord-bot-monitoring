@@ -1,4 +1,4 @@
-import type { Client } from "discord.js";
+import { type Client, Status } from "discord.js";
 import { logger } from "./logger.ts";
 import type { ShardReporter } from "./reporter.ts";
 
@@ -17,7 +17,9 @@ export class ShardHeartbeat {
 	start(shardIds: readonly number[]): void {
 		for (const shardId of shardIds) {
 			const tick = () => {
-				const status = this.client.ws.status === 0 ? "online" : "offline";
+				// The manager status is global, a single dead shard would still report "online"
+				const shardStatus = this.client.ws.shards.get(shardId)?.status ?? this.client.ws.status;
+				const status = shardStatus === Status.Ready ? "online" : "offline";
 				void this.reporter.report(shardId, status);
 			};
 

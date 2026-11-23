@@ -85,8 +85,8 @@ export class ShardMonitor {
 		this.eventListener.register();
 		this.heartbeat.start(shardIds);
 
-		process.once("SIGTERM", this.handleExit);
-		process.once("SIGINT", this.handleExit);
+		process.once("SIGTERM", this.handleSignal);
+		process.once("SIGINT", this.handleSignal);
 	}
 
 	/** Stops the heartbeat timers. Event listeners remain active. */
@@ -109,13 +109,20 @@ export class ShardMonitor {
 		);
 	}
 
-	private readonly handleExit = async (): Promise<void> => {
+	/**
+	 * Reports the shards offline without taking over the bot's own shutdown: when the bot listens
+	 * to the signal, it decides when to exit. Otherwise the signal is raised again so the process
+	 * ends as it would have without this library.
+	 */
+	private readonly handleSignal = async (signal: NodeJS.Signals): Promise<void> => {
 		try {
 			await this.shutdown();
 		} catch (error) {
 			logger.error("ShardMonitor: failed to shutdown cleanly", error);
-		} finally {
-			process.exit(0);
+		}
+
+		if (process.listenerCount(signal) === 0) {
+			process.kill(process.pid, signal);
 		}
 	};
 }
