@@ -1,5 +1,5 @@
 import { afterEach, expect, spyOn, test } from "bun:test";
-import { DISABLED_INSTRUMENTATIONS, startTracing } from "../src/otel.ts";
+import { DISABLED_INSTRUMENTATIONS, isDiscordGateway, startTracing } from "../src/otel.ts";
 
 afterEach(() => {
 	delete process.env.UPBOT_TOKEN;
@@ -19,4 +19,14 @@ test("turns off the noisy instrumentations by default", () => {
 		"@opentelemetry/instrumentation-net",
 		"@opentelemetry/instrumentation-fs",
 	]);
+});
+
+test("recognizes the gateway websocket hosts, not the REST API", () => {
+	expect(isDiscordGateway("gateway.discord.gg")).toBe(true);
+	expect(isDiscordGateway("https://gateway.discord.gg")).toBe(true);
+	expect(isDiscordGateway("wss://gateway-us-east1-b.discord.gg/?v=10")).toBe(true);
+	expect(isDiscordGateway("gateway.discord.gg:443")).toBe(true);
+	expect(isDiscordGateway("discord.com")).toBe(false);
+	expect(isDiscordGateway("https://discord.com")).toBe(false);
+	expect(isDiscordGateway(undefined)).toBe(false);
 });

@@ -41,6 +41,55 @@ export interface TracingOptions {
 	esm?: boolean;
 }
 
+/**
+ * The gateway websocket: its handshake is an HTTP request that would open a trace, and every
+ * gateway message (interactions, events) would then run inside it. Resume URLs use other
+ * gateway hosts, e.g. gateway-us-east1-b.discord.gg.
+ */
+export function isDiscordGateway(host: string | undefined | null): boolean {
+	if (!host) {
+		return false;
+	}
+
+	const hostname = host.replace(/^wss?:\/\/|^https?:\/\//, "").split(/[/:]/)[0] ?? "";
+
+	return /^gateway[\w-]*\.discord\.gg$/.test(hostname);
+}
+
+type HookedConfig = { ignoreOutgoingRequestHook?: (request: never) => boolean; ignoreRequestHook?: (request: never) => boolean };
+
+/** Default settings per instrumentation, the ones passed in `instrumentations` are merged over them. */
+function defaultInstrumentations(overrides: InstrumentationConfigMap = {}): InstrumentationConfigMap {
+	const config: Record<string, Record<string, unknown>> = Object.fromEntries(
+		DISABLED_INSTRUMENTATIONS.map((name) => [name, { enabled: false }]),
+	);
+
+	const custom = overrides as Record<string, HookedConfig | undefined>;
+	const userHttpHook = custom["@opentelemetry/instrumentation-http"]?.ignoreOutgoingRequestHook as
+		| ((request: { hostname?: string | null; host?: string | null }) => boolean)
+		| undefined;
+	const userUndiciHook = custom["@opentelemetry/instrumentation-undici"]?.ignoreRequestHook as
+		| ((request: { origin: string }) => boolean)
+		| undefined;
+
+	for (const [name, value] of Object.entries(overrides)) {
+		config[name] = { ...config[name], ...(value as Record<string, unknown>) };
+	}
+
+	config["@opentelemetry/instrumentation-http"] = {
+		...config["@opentelemetry/instrumentation-http"],
+		ignoreOutgoingRequestHook: (request: { hostname?: string | null; host?: string | null }) =>
+			isDiscordGateway(request.hostname ?? request.host) || (userHttpHook?.(request) ?? false),
+	};
+	config["@opentelemetry/instrumentation-undici"] = {
+		...config["@opentelemetry/instrumentation-undici"],
+		ignoreRequestHook: (request: { origin: string }) =>
+			isDiscordGateway(request.origin) || (userUndiciHook?.(request) ?? false),
+	};
+
+	return config as InstrumentationConfigMap;
+}
+
 type Sampler = NonNullable<NodeSDKConfiguration["sampler"]>;
 
 // SamplingDecision of @opentelemetry/sdk-trace-base, stable across versions
@@ -136,10 +185,8 @@ export function startTracing(options: TracingOptions = {}): NodeSDK | undefined 
 		registerEsmHook();
 	}
 
-	const disabled = Object.fromEntries(DISABLED_INSTRUMENTATIONS.map((name) => [name, { enabled: false }]));
-
 	const sdk = new NodeSDK({
-		instrumentations: [getNodeAutoInstrumentations({ ...disabled, ...options.instrumentations } as InstrumentationConfigMap)],
+		instrumentations: [getNodeAutoInstrumentations(defaultInstrumentations(options.instrumentations))],
 		sampler: ratioSampler(options.sampleRate ?? readRate(process.env.UPBOT_TRACES_SAMPLE_RATE) ?? 1),
 		serviceName: options.serviceName ?? process.env.OTEL_SERVICE_NAME ?? "discord-bot",
 		traceExporter: new OTLPTraceExporter({

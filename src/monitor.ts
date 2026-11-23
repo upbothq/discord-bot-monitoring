@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { Client } from "discord.js";
 import { version as discordJsVersion } from "discord.js";
+import { EventTracer } from "./collectors/events.ts";
 import { InteractionCollector } from "./collectors/interactions.ts";
 import { RateLimitCollector } from "./collectors/rate-limits.ts";
 import { ShardCollector } from "./collectors/shards.ts";
@@ -28,6 +29,7 @@ export class ShardMonitor {
 	private readonly transport: Transport | undefined;
 	private readonly shards: ShardCollector;
 	private readonly interactions: InteractionCollector | undefined;
+	private readonly events: EventTracer | undefined;
 	private readonly rateLimits: RateLimitCollector | undefined;
 	private readonly tracing: Tracing;
 	private readonly instanceId: string = randomUUID();
@@ -52,6 +54,7 @@ export class ShardMonitor {
 		interactions = true,
 		rateLimits = true,
 		tracing = true,
+		events = true,
 		normalizeCustomId,
 	}: ShardMonitorOptions) {
 		if (debug) enableLogging();
@@ -65,6 +68,7 @@ export class ShardMonitor {
 		this.interactions = interactions
 			? new InteractionCollector(client, tracing ? this.tracing : undefined, normalizeCustomId)
 			: undefined;
+		this.events = tracing && events ? new EventTracer(client, this.tracing) : undefined;
 		this.rateLimits = rateLimits ? new RateLimitCollector(client) : undefined;
 
 		if (!token) {
@@ -95,6 +99,8 @@ export class ShardMonitor {
 		logger.info(`Shard monitor started for ${this.client.user?.tag ?? "unknown client"}`);
 
 		this.shards.register();
+		// Before interactions: the event tracer dispatches listeners itself only over the plain emit
+		this.events?.register();
 		this.interactions?.register();
 		this.rateLimits?.register();
 		process.once("SIGTERM", this.handleSignal);
@@ -135,6 +141,7 @@ export class ShardMonitor {
 		this.client.off(this.readyEvent, this.handleReady);
 		this.shards.unregister();
 		this.interactions?.unregister();
+		this.events?.unregister();
 		this.rateLimits?.unregister();
 
 		process.off("SIGTERM", this.handleSignal);

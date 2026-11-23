@@ -17,20 +17,20 @@ npm install @upbothq/discord-bot-monitoring
 
 ## Usage
 
-Create a Discord bot monitor in Upbot, copy its token, then start the monitor next to your client. With a `ShardingManager`, do this in the shard file.
+Create a Discord bot monitor in Upbot, copy its token, then start the monitor next to your client. It works for every bot, sharded or not. With a `ShardingManager`, do this in the shard file.
 
 ```ts
 import { Client, GatewayIntentBits } from "discord.js";
-import { ShardMonitor } from "@upbothq/discord-bot-monitoring";
+import { BotMonitor } from "@upbothq/discord-bot-monitoring";
 
 const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-new ShardMonitor({ client, token: process.env.UPBOT_TOKEN });
+new BotMonitor({ client, token: process.env.UPBOT_TOKEN });
 
 client.login(process.env.DISCORD_TOKEN);
 ```
 
-`token` defaults to the `UPBOT_TOKEN` environment variable, so `new ShardMonitor({ client })` is enough when it is set.
+`token` defaults to the `UPBOT_TOKEN` environment variable, so `new BotMonitor({ client })` is enough when it is set. `ShardMonitor` is the same class under its former name.
 
 Each process sends one report every 10 seconds with all the shards it owns. A shard changing status is reported within a second.
 
@@ -43,6 +43,7 @@ Each process sends one report every 10 seconds with all the shards it owns. A sh
 | `interactions`      | `true`                                 | Measure interactions.                                                         |
 | `rateLimits`        | `true`                                 | Count rate limits and invalid requests.                                       |
 | `tracing`           | `true`                                 | Open a span per interaction when `@opentelemetry/api` is installed.           |
+| `events`            | `true`                                 | Also open a span per Discord event the bot listens to, e.g. `messageCreate`.  |
 | `normalizeCustomId` | IDs, snowflakes and UUIDs become `*`   | Groups dynamic custom IDs, e.g. `ticket:close:1234` becomes `ticket:close:*`. |
 | `interval`          | `10000`                                | Report interval in milliseconds (5 000 to 120 000).                           |
 | `debug`             | `false`                                | Log what the library does.                                                    |
@@ -53,7 +54,7 @@ Each process sends one report every 10 seconds with all the shards it owns. A sh
 On `SIGTERM` and `SIGINT` the shards are reported offline. If your bot handles these signals itself, it keeps control of when the process exits. Otherwise the process exits as it would without this library.
 
 ```ts
-const monitor = new ShardMonitor({ client });
+const monitor = new BotMonitor({ client });
 
 await monitor.shutdown(); // report offline, then stop
 monitor.destroy(); // stop and remove every listener the library added
@@ -62,6 +63,10 @@ monitor.destroy(); // stop and remove every listener the library added
 ## Traces
 
 The library opens a span named `interaction /command subcommand` for each interaction and runs your `interactionCreate` listeners inside it. Spans of auto-instrumented libraries (PostgreSQL, MySQL, MongoDB, Redis, Prisma, HTTP, fetch…) become its children, so Upbot shows where the time of each command goes.
+
+The Discord events your bot listens to (`messageCreate`, `guildMemberAdd`…) get a span named `event messageCreate` the same way, lasting until their async listeners finish. Internal and very frequent events (`raw`, `debug`, `presenceUpdate`, `typingStart`…) are left out, see `UNTRACED_EVENTS`.
+
+These spans come from the monitor: the `register` entry below only installs OpenTelemetry, so start a `BotMonitor` as well. The gateway websocket itself is never traced.
 
 Install OpenTelemetry:
 

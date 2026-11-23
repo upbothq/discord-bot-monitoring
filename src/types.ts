@@ -28,6 +28,11 @@ export interface ShardMonitorOptions {
 	/** Open an OpenTelemetry span per interaction when `@opentelemetry/api` is installed. Defaults to true. */
 	tracing?: boolean;
 	/**
+	 * Open an OpenTelemetry span per Discord event the bot listens to (messageCreate, guildMemberAdd…),
+	 * when `tracing` is on. Defaults to true.
+	 */
+	events?: boolean;
+	/**
 	 * Groups dynamic custom IDs of buttons, select menus and modals under one name.
 	 * By default IDs, snowflakes and UUIDs are replaced with `*`, e.g. `ticket:close:*`.
 	 */
