@@ -48,6 +48,12 @@ Reports, once per process, the status of every shard it owns and the interaction
 - `latency_buckets`: interactions acknowledged within 50, 100, 250, 500, 1000, 2000, 3000, 5000, 10000 ms, and slower.
 - `invalid_requests`: 401, 403 and non-shared 429 responses from the Discord API.
 
+Added in 0.2.0, all optional so older SDKs keep working:
+
+- `guild_issues`: Discord API errors made while handling a command or an event, per guild: `{ guild_id, type, name, route, code, count, app_permissions }`. `route` is `"PUT /guilds/:id/members/:id/roles/:id"` or `"interaction response"`, `code` the Discord error code (`"50013"`) or the HTTP status when the body had none, `app_permissions` the permissions of the bot in that channel as a decimal bitfield. At most 500 per report.
+- `release`: `{ id, source }`, the version of the bot's code: `UPBOT_RELEASE` (`"env"`), the git commit (`"git"`) or a hash of the source files outside `node_modules` (`"files"`). A new id is a deployment, the same id after a restart is not.
+- `runtime_stats`: about once a minute per process. `caches` (entries per discord.js cache: guilds, channels, users, members, presences, voice_states, roles, emojis, messages), `heap_used_mb`, `heap_total_mb`, `rss_mb`, `external_mb`, `intents` (decimal bitfield), `sweepers` (configured sweeper names) and `listened_events` (client events with at least one listener).
+
 ## Response
 
 `200 OK` with the settings the SDK applies:

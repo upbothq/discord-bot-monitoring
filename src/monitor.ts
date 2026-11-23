@@ -2,6 +2,9 @@ import { randomUUID } from "node:crypto";
 import type { Client } from "discord.js";
 import { version as discordJsVersion } from "discord.js";
 import { EventTracer } from "./collectors/events.ts";
+import { GuildIssueCollector } from "./collectors/guild-issues.ts";
+import { RuntimeCollector } from "./collectors/runtime.ts";
+import { detectRelease } from "./release.ts";
 import { InteractionCollector } from "./collectors/interactions.ts";
 import { RateLimitCollector } from "./collectors/rate-limits.ts";
 import { ShardCollector } from "./collectors/shards.ts";
@@ -9,7 +12,7 @@ import { readyEventName, runtimeVersion, totalShardCount } from "./compat.ts";
 import { enableLogging, logger } from "./logger.ts";
 import { Tracing } from "./tracing.ts";
 import { type SendResult, Transport } from "./transport.ts";
-import type { RemoteConfig, ShardMonitorOptions, ShardStatus, TelemetryReport } from "./types.ts";
+import type { ReleasePayload, RemoteConfig, ShardMonitorOptions, ShardStatus, TelemetryReport } from "./types.ts";
 import { PACKAGE_VERSION } from "./utils/version.ts";
 
 const DEFAULT_ENDPOINT = "https://dash.upbot.app/api/telemetry";
@@ -30,6 +33,9 @@ export class ShardMonitor {
 	private readonly shards: ShardCollector;
 	private readonly interactions: InteractionCollector | undefined;
 	private readonly events: EventTracer | undefined;
+	private readonly issues = new GuildIssueCollector();
+	private readonly runtime: RuntimeCollector;
+	private release: ReleasePayload | undefined;
 	private readonly rateLimits: RateLimitCollector | undefined;
 	private readonly tracing: Tracing;
 	private readonly instanceId: string = randomUUID();
@@ -68,8 +74,13 @@ export class ShardMonitor {
 		this.interactions = interactions
 			? new InteractionCollector(client, tracing ? this.tracing : undefined, normalizeCustomId)
 			: undefined;
-		this.events = tracing && events ? new EventTracer(client, this.tracing) : undefined;
+		// Events always run in their guild context, they are traced only with `tracing`
+		this.events = events ? new EventTracer(client, tracing ? this.tracing : undefined) : undefined;
+		this.runtime = new RuntimeCollector(client);
 		this.rateLimits = rateLimits ? new RateLimitCollector(client) : undefined;
+
+		if (this.interactions) this.interactions.issues = this.issues;
+		if (this.rateLimits) this.rateLimits.issues = this.issues;
 
 		if (!token) {
 			logger.error("ShardMonitor: no token, pass `token` or set UPBOT_TOKEN — monitoring is disabled");
@@ -106,8 +117,14 @@ export class ShardMonitor {
 		process.once("SIGTERM", this.handleSignal);
 		process.once("SIGINT", this.handleSignal);
 
-		// The first report waits for OpenTelemetry, otherwise it would be traced
-		void this.tracing.load().finally(() => {
+		// The first report waits for OpenTelemetry, otherwise it would be traced, and for the
+		// fingerprint of the code, which tells a deployment from a restart
+		void Promise.all([
+			this.tracing.load(),
+			detectRelease().then((release) => {
+				this.release = release;
+			}),
+		]).finally(() => {
 			this.schedule(0);
 		});
 	}
@@ -231,6 +248,8 @@ export class ShardMonitor {
 
 		const interactions = this.interactions?.snapshot() ?? [];
 		const api = this.rateLimits?.snapshot() ?? { rateLimits: [], invalidRequests: 0 };
+		const guildIssues = this.issues.snapshot();
+		const runtimeStats = forcedStatus ? undefined : this.runtime.snapshot();
 
 		const report: TelemetryReport = {
 			instance_id: this.instanceId,
@@ -244,6 +263,9 @@ export class ShardMonitor {
 			interactions,
 			rate_limits: api.rateLimits,
 			invalid_requests: api.invalidRequests,
+			guild_issues: guildIssues,
+			...(this.release ? { release: this.release } : {}),
+			...(runtimeStats ? { runtime_stats: runtimeStats } : {}),
 		};
 
 		logger.debug(`Reporting ${report.shards.length} shard(s) and ${interactions.length} interaction name(s)`);
@@ -253,6 +275,9 @@ export class ShardMonitor {
 		if (!result.ok && !result.discard) {
 			this.interactions?.restore(interactions);
 			this.rateLimits?.restore(api);
+			this.issues.restore(guildIssues);
+
+			if (runtimeStats) this.runtime.retry();
 		}
 
 		if (!result.ok && result.discard && !result.fatal) {

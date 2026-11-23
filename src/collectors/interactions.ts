@@ -1,6 +1,8 @@
 import type { Client } from "discord.js";
+import { discordContext, permissionsBitfield } from "../context.ts";
 import type { Tracing } from "../tracing.ts";
 import type { InteractionKind, InteractionPayload } from "../types.ts";
+import type { GuildIssueCollector } from "./guild-issues.ts";
 import { bucketIndex, emptyBuckets } from "./histogram.ts";
 
 /** Discord shows "The application did not respond" when nothing acknowledged it within 3 seconds. */
@@ -63,6 +65,9 @@ export function defaultNormalizeCustomId(customId: string): string {
  */
 export class InteractionCollector {
 	enabled = true;
+
+	/** Receives the failed responses, per guild. */
+	issues: GuildIssueCollector | undefined;
 
 	private aggregates = new Map<string, InteractionPayload>();
 	private restoreEmit: (() => void) | undefined;
@@ -154,6 +159,13 @@ export class InteractionCollector {
 			"discord.guild.id": interaction.guildId ?? "",
 		});
 
+		const context = {
+			guildId: interaction.guildId ?? null,
+			type: classified.type,
+			name: classified.name,
+			appPermissions: permissionsBitfield(interaction.appPermissions),
+		};
+
 		const endSpan = (error?: unknown) => {
 			span?.end(error);
 			clearTimeout(spanTimer);
@@ -178,6 +190,7 @@ export class InteractionCollector {
 			const code = typeof rawCode === "number" || typeof rawCode === "string" ? String(rawCode) : "unknown";
 
 			aggregate.error_codes[code] = (aggregate.error_codes[code] ?? 0) + 1;
+			this.issues?.record(context, "interaction response", code);
 
 			if (!failed) {
 				failed = true;
@@ -224,7 +237,7 @@ export class InteractionCollector {
 			});
 		}
 
-		return span ? (fn) => span.run(fn) : (fn) => fn();
+		return (fn) => discordContext.run(context, () => (span ? span.run(fn) : fn()));
 	}
 
 	/** Wraps one method of this interaction object only, the original is called unchanged. */

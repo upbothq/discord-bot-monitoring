@@ -1,5 +1,7 @@
 import type { Client } from "discord.js";
+import { discordContext } from "../context.ts";
 import type { RateLimitPayload } from "../types.ts";
+import type { GuildIssueCollector } from "./guild-issues.ts";
 import { Listeners } from "./listeners.ts";
 
 const MAX_ROUTES = 200;
@@ -13,7 +15,14 @@ interface RateLimitInfo {
 	timeToReset?: number;
 }
 
+interface RequestInfo {
+	method?: string;
+	route?: string;
+	path?: string;
+}
+
 interface ResponseInfo {
+	clone?: () => { json: () => Promise<unknown> };
 	status?: number;
 	statusCode?: number;
 	headers?: { get?: (name: string) => string | null } | Record<string, string | string[] | undefined>;
@@ -25,6 +34,8 @@ interface ResponseInfo {
  */
 export class RateLimitCollector {
 	enabled = true;
+	/** Receives the 403 responses made while handling a command or an event, per guild. */
+	issues: GuildIssueCollector | undefined;
 
 	private routes = new Map<string, RateLimitPayload>();
 	private invalidRequests = 0;
@@ -36,7 +47,10 @@ export class RateLimitCollector {
 
 	register(): void {
 		this.listeners.on("rateLimited", (info: RateLimitInfo) => this.recordRateLimit(info));
-		this.listeners.on("response", (_request: unknown, response: ResponseInfo) => this.recordResponse(response));
+		this.listeners.on("response", (request: RequestInfo, response: ResponseInfo) => {
+			this.recordIssue(request, response);
+			this.recordResponse(response);
+		});
 	}
 
 	unregister(): void {
@@ -98,6 +112,42 @@ export class RateLimitCollector {
 		}
 
 		this.invalidRequests++;
+	}
+
+	/**
+	 * A 403 is a missing permission or access in a guild: attribute it to the command or event
+	 * that made the request. The body is read from a copy, the bot still gets the error as usual.
+	 */
+	private recordIssue(request: RequestInfo | undefined, response: ResponseInfo): void {
+		const status = response.status ?? response.statusCode;
+		const context = discordContext.getStore();
+
+		if (status !== 403 || !this.issues || !context?.guildId) {
+			return;
+		}
+
+		const route = `${(request?.method ?? "unknown").toUpperCase()} ${request?.route ?? request?.path ?? "unknown"}`;
+		const issues = this.issues;
+		const fallback = () => issues.record(context, route, "403");
+
+		if (typeof response.clone !== "function") {
+			fallback();
+
+			return;
+		}
+
+		try {
+			void response
+				.clone()
+				.json()
+				.then((body) => {
+					const code = (body as { code?: unknown } | null)?.code;
+
+					issues.record(context, route, typeof code === "number" && code > 0 ? String(code) : "403");
+				}, fallback);
+		} catch {
+			fallback();
+		}
 	}
 
 	private entry(route: string, method: string, scope: string, global: boolean): RateLimitPayload {

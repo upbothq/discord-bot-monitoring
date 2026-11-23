@@ -1,5 +1,6 @@
 import { EventEmitter } from "node:events";
 import type { Client } from "discord.js";
+import { discordContext } from "../context.ts";
 import type { Tracing } from "../tracing.ts";
 
 /**
@@ -55,7 +56,8 @@ export class EventTracer {
 
 	constructor(
 		private readonly client: Client,
-		private readonly tracing: Tracing,
+		/** Without tracing, listeners still run in their guild context, for the REST errors. */
+		private readonly tracing: Tracing | undefined,
 		private readonly ignored: ReadonlySet<string> = UNTRACED_EVENTS,
 	) {}
 
@@ -76,18 +78,22 @@ export class EventTracer {
 				return original.call(this, event, ...args);
 			}
 
-			const span = tracing.start(`event ${event}`, {
+			const guild = guildId(args[0]);
+			const context = { guildId: guild === "" ? null : guild, type: "event", name: event, appPermissions: null };
+			const span = tracing?.start(`event ${event}`, {
 				"discord.event.name": event,
-				"discord.guild.id": guildId(args[0]),
+				"discord.guild.id": guild,
 			});
 
 			if (!span) {
-				return original.call(this, event, ...args);
+				return discordContext.run(context, () => original.call(this, event, ...args));
 			}
+
+			const run = <T>(fn: () => T): T => discordContext.run(context, () => span.run(fn));
 
 			if (!dispatchHere) {
 				try {
-					return span.run(() => original.call(this, event, ...args));
+					return run(() => original.call(this, event, ...args));
 				} catch (error) {
 					span.end(error);
 					throw error;
@@ -101,7 +107,7 @@ export class EventTracer {
 			const pending: PromiseLike<unknown>[] = [];
 
 			try {
-				span.run(() => {
+				run(() => {
 					for (const listener of listeners) {
 						const result = listener.apply(this, args);
 

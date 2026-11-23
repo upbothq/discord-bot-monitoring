@@ -28,8 +28,8 @@ export interface ShardMonitorOptions {
 	/** Open an OpenTelemetry span per interaction when `@opentelemetry/api` is installed. Defaults to true. */
 	tracing?: boolean;
 	/**
-	 * Open an OpenTelemetry span per Discord event the bot listens to (messageCreate, guildMemberAdd…),
-	 * when `tracing` is on. Defaults to true.
+	 * Follow the Discord events the bot listens to (messageCreate, guildMemberAdd…): their Discord
+	 * API errors are reported per guild, and with `tracing` each one gets a span. Defaults to true.
 	 */
 	events?: boolean;
 	/**
@@ -69,6 +69,42 @@ export interface RateLimitPayload {
 	max_retry_after_ms: number;
 }
 
+export interface GuildIssuePayload {
+	guild_id: string;
+	/** Interaction kind or "event". */
+	type: string;
+	name: string;
+	/** REST route, e.g. "POST /channels/:id/messages", or "interaction response". */
+	route: string;
+	/** Discord error code (50013…), or the HTTP status when the body had none. */
+	code: string;
+	count: number;
+	/** Permissions of the bot in the channel, as a decimal bitfield. */
+	app_permissions: string | null;
+}
+
+/** Version of the bot's code, so the dashboard can compare deployments. */
+export interface ReleasePayload {
+	id: string;
+	/** Where the id comes from: UPBOT_RELEASE, the git commit, or a hash of the source files. */
+	source: "env" | "git" | "files";
+}
+
+/** Sizes of the discord.js caches and of the process memory, sent about once a minute. */
+export interface RuntimeStatsPayload {
+	caches: Record<string, number>;
+	heap_used_mb: number;
+	heap_total_mb: number;
+	rss_mb: number;
+	external_mb: number;
+	/** Gateway intents bitfield, as a decimal string. */
+	intents: string | null;
+	/** Cache sweepers configured on the client, e.g. ["messages"]. */
+	sweepers: string[];
+	/** Client events the bot listens to. */
+	listened_events: string[];
+}
+
 export interface TelemetryReport {
 	instance_id: string;
 	sdk_version: string;
@@ -81,6 +117,9 @@ export interface TelemetryReport {
 	interactions: InteractionPayload[];
 	rate_limits: RateLimitPayload[];
 	invalid_requests: number;
+	guild_issues: GuildIssuePayload[];
+	release?: ReleasePayload;
+	runtime_stats?: RuntimeStatsPayload;
 }
 
 /** Settings the dashboard sends back with each report. */

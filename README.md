@@ -60,6 +60,14 @@ await monitor.shutdown(); // report offline, then stop
 monitor.destroy(); // stop and remove every listener the library added
 ```
 
+### Diagnostics
+
+The reports also carry what the dashboard needs to explain problems, with no code to write:
+
+- **Errors per server**: a Discord API error (`50013 Missing Permissions`…) made while handling a command or an event is counted for its server, with the permissions the bot had in that channel. Upbot then shows which permission is missing, or when the role hierarchy is the cause.
+- **Deployments**: the version of your code is read from `UPBOT_RELEASE`, else the git commit, else a hash of your source files (outside `node_modules`). Editing the code and restarting is enough for Upbot to compare the new version with the previous one.
+- **Memory**: about once a minute, the size of each discord.js cache, the process memory, the intents, sweepers and listened events, so Upbot can recommend a lighter cache setup.
+
 ## Traces
 
 The library opens a span named `interaction /command subcommand` for each interaction and runs your `interactionCreate` listeners inside it. Spans of auto-instrumented libraries (PostgreSQL, MySQL, MongoDB, Redis, Prisma, HTTP, fetch…) become its children, so Upbot shows where the time of each command goes.
