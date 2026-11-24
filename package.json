@@ -6,7 +6,7 @@
 	"bugs": {
 		"url": "https://github.com/upbothq/discord-bot-monitoring/issues"
 	},
-	"license": "MIT",
+	"license": "BUSL-1.1",
 	"repository": {
 		"type": "git",
 		"url": "git+https://github.com/upbothq/discord-bot-monitoring.git"
@@ -86,7 +86,6 @@
 		"bumpp": "^10.3.2",
 		"bunup": "^0.16.17",
 		"discord.js": "^14.25.1",
-		"javascript-obfuscator": "^5.3.0",
 		"oxfmt": "^0.40.0",
 		"oxlint": "^1.55.0",
 		"oxlint-tsgolint": "^0.16.0",
