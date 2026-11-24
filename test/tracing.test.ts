@@ -2,7 +2,11 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { context, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import { BasicTracerProvider, InMemorySpanExporter, SimpleSpanProcessor } from "@opentelemetry/sdk-trace-base";
+import {
+	BasicTracerProvider,
+	InMemorySpanExporter,
+	SimpleSpanProcessor,
+} from "@opentelemetry/sdk-trace-base";
 import { EventTracer } from "../src/collectors/events.ts";
 import { InteractionCollector } from "../src/collectors/interactions.ts";
 import { Tracing } from "../src/tracing.ts";
@@ -120,7 +124,10 @@ test("events without listeners and internal events are not traced, listeners run
 	client.emit("debug", "heartbeat");
 
 	expect(calls).toEqual(["once", "on", "on", "debug"]);
-	expect(exporter.getFinishedSpans().map((span) => span.name)).toEqual(["event guildCreate", "event guildCreate"]);
+	expect(exporter.getFinishedSpans().map((span) => span.name)).toEqual([
+		"event guildCreate",
+		"event guildCreate",
+	]);
 
 	events.unregister();
 	expect(client.emit).toBe(EventEmitter.prototype.emit);

@@ -54,7 +54,11 @@ export class Tracing {
 		}
 
 		// Every interaction starts its own trace, whatever context the gateway message ran in
-		const span = tracer.startSpan(name, { kind: api.SpanKind.SERVER, attributes }, api.ROOT_CONTEXT);
+		const span = tracer.startSpan(
+			name,
+			{ kind: api.SpanKind.SERVER, attributes },
+			api.ROOT_CONTEXT,
+		);
 
 		if (!span.isRecording()) {
 			return undefined;

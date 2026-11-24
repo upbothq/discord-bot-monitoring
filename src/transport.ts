@@ -60,7 +60,11 @@ export class Transport {
 			ok: false,
 			fatal: response.status === 401 || response.status === 403,
 			// 404 and 5xx can come from a deploy in progress, retry them; other 4xx will fail again
-			discard: response.status >= 400 && response.status < 500 && response.status !== 404 && response.status !== 429,
+			discard:
+				response.status >= 400 &&
+				response.status < 500 &&
+				response.status !== 404 &&
+				response.status !== 429,
 			retryAfterMs: Number.isFinite(retryAfter) && retryAfter > 0 ? retryAfter * 1000 : undefined,
 			status: response.status,
 			reason: `HTTP ${response.status} ${response.body.slice(0, 300)}`,
@@ -87,7 +91,12 @@ export class Transport {
 		const timer = setTimeout(() => controller.abort(), this.timeoutMs);
 
 		try {
-			const response = await fetch(this.endpoint, { method: "POST", headers, body, signal: controller.signal });
+			const response = await fetch(this.endpoint, {
+				method: "POST",
+				headers,
+				body,
+				signal: controller.signal,
+			});
 
 			return {
 				status: response.status,
@@ -100,14 +109,21 @@ export class Transport {
 	}
 
 	/** Node.js 16 has no global fetch, discord.js 14 still supports it. */
-	private async postWithNodeHttp(body: string, headers: Record<string, string>): Promise<RawResponse> {
+	private async postWithNodeHttp(
+		body: string,
+		headers: Record<string, string>,
+	): Promise<RawResponse> {
 		const url = new URL(this.endpoint);
 		const http = url.protocol === "https:" ? await import("node:https") : await import("node:http");
 
 		return new Promise((resolve, reject) => {
 			const request = http.request(
 				url,
-				{ method: "POST", headers: { ...headers, "Content-Length": Buffer.byteLength(body) }, timeout: this.timeoutMs },
+				{
+					method: "POST",
+					headers: { ...headers, "Content-Length": Buffer.byteLength(body) },
+					timeout: this.timeoutMs,
+				},
 				(response) => {
 					let data = "";
 
@@ -120,14 +136,18 @@ export class Transport {
 
 						resolve({
 							status: response.statusCode ?? 0,
-							retryAfter: Array.isArray(retryAfter) ? (retryAfter[0] ?? null) : (retryAfter ?? null),
+							retryAfter: Array.isArray(retryAfter)
+								? (retryAfter[0] ?? null)
+								: (retryAfter ?? null),
 							body: data,
 						});
 					});
 				},
 			);
 
-			request.on("timeout", () => request.destroy(new Error(`Request timed out after ${this.timeoutMs}ms`)));
+			request.on("timeout", () =>
+				request.destroy(new Error(`Request timed out after ${this.timeoutMs}ms`)),
+			);
 			request.on("error", reject);
 			request.end(body);
 		});

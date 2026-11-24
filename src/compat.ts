@@ -98,7 +98,9 @@ export function totalShardCount(client: Client): number {
 
 	const configured = (client.options as { shardCount?: unknown }).shardCount;
 
-	return typeof configured === "number" && configured > 0 ? configured : ownedShardIds(client).length;
+	return typeof configured === "number" && configured > 0
+		? configured
+		: ownedShardIds(client).length;
 }
 
 export function runtimeVersion(): string {

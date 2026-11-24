@@ -25,7 +25,9 @@ interface ResponseInfo {
 	clone?: () => { json: () => Promise<unknown> };
 	status?: number;
 	statusCode?: number;
-	headers?: { get?: (name: string) => string | null } | Record<string, string | string[] | undefined>;
+	headers?:
+		| { get?: (name: string) => string | null }
+		| Record<string, string | string[] | undefined>;
 }
 
 /**
@@ -58,7 +60,10 @@ export class RateLimitCollector {
 	}
 
 	snapshot(): { rateLimits: RateLimitPayload[]; invalidRequests: number } {
-		const snapshot = { rateLimits: [...this.routes.values()], invalidRequests: this.invalidRequests };
+		const snapshot = {
+			rateLimits: [...this.routes.values()],
+			invalidRequests: this.invalidRequests,
+		};
 
 		this.routes = new Map();
 		this.invalidRequests = 0;
@@ -66,7 +71,13 @@ export class RateLimitCollector {
 		return snapshot;
 	}
 
-	restore({ rateLimits, invalidRequests }: { rateLimits: RateLimitPayload[]; invalidRequests: number }): void {
+	restore({
+		rateLimits,
+		invalidRequests,
+	}: {
+		rateLimits: RateLimitPayload[];
+		invalidRequests: number;
+	}): void {
 		this.invalidRequests += invalidRequests;
 
 		for (const item of rateLimits) {
@@ -143,7 +154,11 @@ export class RateLimitCollector {
 				.then((body) => {
 					const code = (body as { code?: unknown } | null)?.code;
 
-					issues.record(context, route, typeof code === "number" && code > 0 ? String(code) : "403");
+					issues.record(
+						context,
+						route,
+						typeof code === "number" && code > 0 ? String(code) : "403",
+					);
 				}, fallback);
 		} catch {
 			fallback();

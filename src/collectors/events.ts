@@ -74,12 +74,21 @@ export class EventTracer {
 		const { tracing, ignored } = this;
 
 		const patched = function (this: unknown, event: unknown, ...args: unknown[]): boolean {
-			if (typeof event !== "string" || ignored.has(event) || emitter.rawListeners(event).length === 0) {
+			if (
+				typeof event !== "string" ||
+				ignored.has(event) ||
+				emitter.rawListeners(event).length === 0
+			) {
 				return original.call(this, event, ...args);
 			}
 
 			const guild = guildId(args[0]);
-			const context = { guildId: guild === "" ? null : guild, type: "event", name: event, appPermissions: null };
+			const context = {
+				guildId: guild === "" ? null : guild,
+				type: "event",
+				name: event,
+				appPermissions: null,
+			};
 			const span = tracing?.start(`event ${event}`, {
 				"discord.event.name": event,
 				"discord.guild.id": guild,

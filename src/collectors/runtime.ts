@@ -56,7 +56,10 @@ export class RuntimeCollector {
 			messages: 0,
 		};
 
-		const guilds = (client.guilds?.cache as { values?: () => Iterable<Record<string, unknown>> } | undefined)?.values?.() ?? [];
+		const guilds =
+			(
+				client.guilds?.cache as { values?: () => Iterable<Record<string, unknown>> } | undefined
+			)?.values?.() ?? [];
 
 		for (const guild of guilds) {
 			caches.members += size(guild.members);
@@ -66,12 +69,16 @@ export class RuntimeCollector {
 			caches.emojis += size(guild.emojis);
 		}
 
-		for (const channel of (client.channels?.cache?.values?.() ?? []) as Iterable<{ messages?: Cached }>) {
+		for (const channel of (client.channels?.cache?.values?.() ?? []) as Iterable<{
+			messages?: Cached;
+		}>) {
 			caches.messages += size(channel.messages);
 		}
 
 		const memory = process.memoryUsage();
-		const intents = (client.options?.intents as { bitfield?: unknown } | undefined)?.bitfield ?? client.options?.intents;
+		const intents =
+			(client.options?.intents as { bitfield?: unknown } | undefined)?.bitfield ??
+			client.options?.intents;
 
 		return {
 			caches: caches as Record<string, number>,
@@ -79,10 +86,12 @@ export class RuntimeCollector {
 			heap_total_mb: megabytes(memory.heapTotal),
 			rss_mb: megabytes(memory.rss),
 			external_mb: megabytes(memory.external),
-			intents: typeof intents === "bigint" || typeof intents === "number" ? intents.toString() : null,
+			intents:
+				typeof intents === "bigint" || typeof intents === "number" ? intents.toString() : null,
 			sweepers: Object.keys(client.options?.sweepers ?? {}),
 			listened_events: (client.eventNames?.() ?? []).filter(
-				(event): event is string => typeof event === "string" && (client.listenerCount?.(event) ?? 0) > 0,
+				(event): event is string =>
+					typeof event === "string" && (client.listenerCount?.(event) ?? 0) > 0,
 			),
 		};
 	}

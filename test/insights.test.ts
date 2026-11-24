@@ -14,7 +14,9 @@ const directories: string[] = [];
 
 afterEach(async () => {
 	delete process.env.UPBOT_RELEASE;
-	await Promise.all(directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })));
+	await Promise.all(
+		directories.splice(0).map((directory) => rm(directory, { force: true, recursive: true })),
+	);
 });
 
 async function project(): Promise<string> {
@@ -26,7 +28,10 @@ async function project(): Promise<string> {
 
 /** A 403 as @discordjs/rest emits it, with the Discord error in the body. */
 function forbidden(code: number) {
-	return { status: 403, clone: () => ({ json: () => Promise.resolve({ code, message: "Missing Permissions" }) }) };
+	return {
+		status: 403,
+		clone: () => ({ json: () => Promise.resolve({ code, message: "Missing Permissions" }) }),
+	};
 }
 
 function setup() {
@@ -51,11 +56,18 @@ test("a 403 made while handling a command is reported for its guild, with the bo
 	client.on("interactionCreate", async (interaction: { reply: () => Promise<void> }) => {
 		await sleep(1);
 		// What @discordjs/rest emits when the bot adds a role it may not manage
-		client.rest.emit("response", { method: "put", route: "/guilds/:id/members/:id/roles/:id" }, forbidden(50013));
+		client.rest.emit(
+			"response",
+			{ method: "put", route: "/guilds/:id/members/:id/roles/:id" },
+			forbidden(50013),
+		);
 		await interaction.reply();
 	});
 
-	client.emit("interactionCreate", { ...chatInput("ticket", "create"), appPermissions: { bitfield: 2048n } });
+	client.emit("interactionCreate", {
+		...chatInput("ticket", "create"),
+		appPermissions: { bitfield: 2048n },
+	});
 	await sleep(20);
 
 	expect(issues.snapshot()).toEqual([
@@ -76,21 +88,28 @@ test("errors of event listeners are reported too, requests outside any guild con
 
 	client.on("guildMemberAdd", async () => {
 		await sleep(1);
-		client.rest.emit("response", { method: "PUT", route: "/guilds/:id/members/:id/roles/:id" }, { status: 403 });
+		client.rest.emit(
+			"response",
+			{ method: "PUT", route: "/guilds/:id/members/:id/roles/:id" },
+			{ status: 403 },
+		);
 	});
 
 	client.emit("guildMemberAdd", { guild: { id: "7" } });
 	client.rest.emit("response", { method: "GET", route: "/gateway/bot" }, forbidden(50001));
 	await sleep(20);
 
-	expect(issues.snapshot()).toMatchObject([{ guild_id: "7", type: "event", name: "guildMemberAdd", code: "403" }]);
+	expect(issues.snapshot()).toMatchObject([
+		{ guild_id: "7", type: "event", name: "guildMemberAdd", code: "403" },
+	]);
 });
 
 test("a failed response to an interaction is reported with its Discord code", async () => {
 	const { client, issues } = setup();
 	const interaction = chatInput("ping");
 
-	interaction.reply = () => Promise.reject(Object.assign(new Error("Unknown interaction"), { code: 10062 }));
+	interaction.reply = () =>
+		Promise.reject(Object.assign(new Error("Unknown interaction"), { code: 10062 }));
 	client.on("interactionCreate", (received: { reply: () => Promise<void> }) => {
 		received.reply().catch(() => {});
 	});
@@ -98,7 +117,9 @@ test("a failed response to an interaction is reported with its Discord code", as
 	client.emit("interactionCreate", interaction);
 	await sleep(10);
 
-	expect(issues.snapshot()).toMatchObject([{ guild_id: "42", name: "/ping", route: "interaction response", code: "10062" }]);
+	expect(issues.snapshot()).toMatchObject([
+		{ guild_id: "42", name: "/ping", route: "interaction response", code: "10062" },
+	]);
 });
 
 test("the release is UPBOT_RELEASE, then the git commit, then a hash of the source files", async () => {
@@ -150,7 +171,12 @@ test("runtime stats count the caches about once a minute", () => {
 
 	Object.assign(client, {
 		channels: { cache: new Map([["1", { messages: { cache: { size: 50 } } }]]) },
-		guilds: { cache: new Map([["1", guild(10)], ["2", guild(5)]]) },
+		guilds: {
+			cache: new Map([
+				["1", guild(10)],
+				["2", guild(5)],
+			]),
+		},
 		options: { intents: { bitfield: 33281 }, sweepers: { messages: {} } },
 		users: { cache: { size: 12 } },
 	});
@@ -159,7 +185,14 @@ test("runtime stats count the caches about once a minute", () => {
 	const runtime = new RuntimeCollector(client.asClient());
 	const stats = runtime.snapshot(100_000);
 
-	expect(stats?.caches).toMatchObject({ guilds: 2, members: 15, presences: 30, roles: 6, messages: 50, users: 12 });
+	expect(stats?.caches).toMatchObject({
+		guilds: 2,
+		members: 15,
+		presences: 30,
+		roles: 6,
+		messages: 50,
+		users: 12,
+	});
 	expect(stats?.intents).toBe("33281");
 	expect(stats?.sweepers).toEqual(["messages"]);
 	expect(stats?.listened_events).toContain("messageCreate");

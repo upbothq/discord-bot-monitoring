@@ -17,12 +17,33 @@ const OVERFLOW_NAME = "(other)";
 const MAX_NAME_LENGTH = 100;
 
 /** Methods that acknowledge an interaction, the final ones answer it without a follow-up. */
-const ACK_METHODS = ["reply", "deferReply", "update", "deferUpdate", "showModal", "respond", "sendPremiumRequired", "launchActivity"] as const;
-const FINAL_ACK_METHODS = new Set<string>(["reply", "update", "showModal", "respond", "sendPremiumRequired", "launchActivity"]);
+const ACK_METHODS = [
+	"reply",
+	"deferReply",
+	"update",
+	"deferUpdate",
+	"showModal",
+	"respond",
+	"sendPremiumRequired",
+	"launchActivity",
+] as const;
+const FINAL_ACK_METHODS = new Set<string>([
+	"reply",
+	"update",
+	"showModal",
+	"respond",
+	"sendPremiumRequired",
+	"launchActivity",
+]);
 const FOLLOW_UP_METHODS = ["editReply", "followUp", "deleteReply"] as const;
 
 // Raw Discord API values, stable across every discord.js version
-const InteractionType = { ApplicationCommand: 2, MessageComponent: 3, Autocomplete: 4, ModalSubmit: 5 };
+const InteractionType = {
+	ApplicationCommand: 2,
+	MessageComponent: 3,
+	Autocomplete: 4,
+	ModalSubmit: 5,
+};
 const CommandType = { ChatInput: 1, User: 2, Message: 3, PrimaryEntryPoint: 4 };
 const ComponentType = { Button: 2 };
 
@@ -84,7 +105,9 @@ export class InteractionCollector {
 			return;
 		}
 
-		const emitter = this.client as unknown as { emit: (event: unknown, ...args: unknown[]) => boolean };
+		const emitter = this.client as unknown as {
+			emit: (event: unknown, ...args: unknown[]) => boolean;
+		};
 		const original = emitter.emit;
 		const track = (interaction: AnyInteraction) => this.track(interaction);
 
@@ -187,7 +210,8 @@ export class InteractionCollector {
 		const onFailure = (error: unknown) => {
 			const aggregate = this.aggregate(classified);
 			const rawCode = (error as { code?: unknown } | undefined)?.code;
-			const code = typeof rawCode === "number" || typeof rawCode === "string" ? String(rawCode) : "unknown";
+			const code =
+				typeof rawCode === "number" || typeof rawCode === "string" ? String(rawCode) : "unknown";
 
 			aggregate.error_codes[code] = (aggregate.error_codes[code] ?? 0) + 1;
 			this.issues?.record(context, "interaction response", code);
@@ -212,18 +236,25 @@ export class InteractionCollector {
 			const aggregate = this.aggregate(classified);
 
 			aggregate.latency_sum_ms += latency;
-			aggregate.latency_buckets[bucketIndex(latency)] = (aggregate.latency_buckets[bucketIndex(latency)] ?? 0) + 1;
+			const bucket = bucketIndex(latency);
+
+			aggregate.latency_buckets[bucket] = (aggregate.latency_buckets[bucket] ?? 0) + 1;
 			awaitingFollowUp = !FINAL_ACK_METHODS.has(method);
 		};
 
 		for (const method of ACK_METHODS) {
-			this.wrap(interaction, method, () => onAcknowledge(method), (settled) => {
-				if (FINAL_ACK_METHODS.has(method)) {
-					settled.then(() => endSpan(), onFailure);
-				} else {
-					settled.then(undefined, onFailure);
-				}
-			});
+			this.wrap(
+				interaction,
+				method,
+				() => onAcknowledge(method),
+				(settled) => {
+					if (FINAL_ACK_METHODS.has(method)) {
+						settled.then(() => endSpan(), onFailure);
+					} else {
+						settled.then(undefined, onFailure);
+					}
+				},
+			);
 		}
 
 		for (const method of FOLLOW_UP_METHODS) {
@@ -293,7 +324,10 @@ export class InteractionCollector {
 	private commandPath(interaction: AnyInteraction): string {
 		const parts = [interaction.commandName ?? "unknown"];
 
-		if (interaction.commandType === CommandType.ChatInput || interaction.type === InteractionType.Autocomplete) {
+		if (
+			interaction.commandType === CommandType.ChatInput ||
+			interaction.type === InteractionType.Autocomplete
+		) {
 			try {
 				const group = interaction.options?.getSubcommandGroup?.(false);
 				const subcommand = interaction.options?.getSubcommand?.(false);

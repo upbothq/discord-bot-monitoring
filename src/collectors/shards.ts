@@ -23,7 +23,9 @@ export class ShardCollector {
 		this.listeners.on("shardReady", (id: number) => this.record(id, "online"));
 		this.listeners.on("shardResume", (id: number) => this.record(id, "online"));
 		this.listeners.on("shardReconnecting", (id: number) => this.record(id, "reconnecting"));
-		this.listeners.on("shardDisconnect", (_event: unknown, id: number) => this.record(id, "offline"));
+		this.listeners.on("shardDisconnect", (_event: unknown, id: number) =>
+			this.record(id, "offline"),
+		);
 		this.listeners.on("shardError", (_error: unknown, id: number) => this.record(id, "error"));
 	}
 
@@ -57,9 +59,11 @@ export class ShardCollector {
 	}
 
 	private statusOf(id: number): ShardStatus {
-		return socketStatus(this.client, id)
-			?? this.lastEvent.get(id)
-			?? (this.client.isReady() ? "online" : "offline");
+		return (
+			socketStatus(this.client, id) ??
+			this.lastEvent.get(id) ??
+			(this.client.isReady() ? "online" : "offline")
+		);
 	}
 
 	private record(id: number, status: ShardStatus): void {

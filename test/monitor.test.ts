@@ -126,7 +126,9 @@ describe("ShardMonitor", () => {
 		client.emit("shardDisconnect", {}, 1);
 		await waitFor(() => reports === 2, 3_000);
 
-		expect(api.requests[1]?.body.interactions).toMatchObject([{ type: "chat_input", name: "/ping", calls: 1 }]);
+		expect(api.requests[1]?.body.interactions).toMatchObject([
+			{ type: "chat_input", name: "/ping", calls: 1 },
+		]);
 	});
 
 	test("stops for good when the token is refused", async () => {
@@ -145,7 +147,9 @@ describe("ShardMonitor", () => {
 	});
 
 	test("stays quiet when rate limited", async () => {
-		const api = dashboard(() => new Response("Too Many Requests", { status: 429, headers: { "Retry-After": "30" } }));
+		const api = dashboard(
+			() => new Response("Too Many Requests", { status: 429, headers: { "Retry-After": "30" } }),
+		);
 		const error = spyOn(console, "error").mockImplementation(() => {});
 		const warn = spyOn(console, "warn").mockImplementation(() => {});
 
@@ -162,7 +166,11 @@ describe("ShardMonitor", () => {
 	test("rewrites a 0.0.x endpoint to the telemetry endpoint", async () => {
 		const api = dashboard();
 
-		monitor({ client: shardedClient().asClient(), token: "secret", endpoint: api.url.replace("/api/telemetry", "/api/shards") });
+		monitor({
+			client: shardedClient().asClient(),
+			token: "secret",
+			endpoint: api.url.replace("/api/telemetry", "/api/shards"),
+		});
 		await waitFor(() => api.requests.length === 1);
 	});
 
@@ -175,7 +183,10 @@ describe("ShardMonitor", () => {
 		await waitFor(() => api.requests.length === 1);
 		await instance.shutdown();
 
-		expect(api.requests[1]?.body.shards).toMatchObject([{ status: "offline" }, { status: "offline" }]);
+		expect(api.requests[1]?.body.shards).toMatchObject([
+			{ status: "offline" },
+			{ status: "offline" },
+		]);
 		expect(process.listenerCount("SIGTERM")).toBe(sigterm);
 	});
 

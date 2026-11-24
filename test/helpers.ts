@@ -14,7 +14,11 @@ export class FakeClient extends EventEmitter {
 	options: { shardCount?: number } = {};
 	shard: { ids: number[]; count: number } | null = null;
 	rest = new EventEmitter();
-	ws: { status: number; ping: number; shards?: Map<number, FakeShardSocket> } = { status: 0, ping: 40, shards: new Map() };
+	ws: { status: number; ping: number; shards?: Map<number, FakeShardSocket> } = {
+		status: 0,
+		ping: 40,
+		shards: new Map(),
+	};
 	guilds = { cache: new Map<string, { shardId: number; memberCount: number }>() };
 
 	isReady(): boolean {
@@ -83,12 +87,17 @@ export interface ReceivedRequest {
 }
 
 /** A local HTTP server standing in for the dashboard. */
-export function fakeDashboard(respond: (request: ReceivedRequest) => Response = () => Response.json({})) {
+export function fakeDashboard(
+	respond: (request: ReceivedRequest) => Response = () => Response.json({}),
+) {
 	const requests: ReceivedRequest[] = [];
 	const server = Bun.serve({
 		port: 0,
 		async fetch(request) {
-			const received = { headers: request.headers, body: (await request.json()) as Record<string, unknown> };
+			const received = {
+				headers: request.headers,
+				body: (await request.json()) as Record<string, unknown>,
+			};
 
 			requests.push(received);
 

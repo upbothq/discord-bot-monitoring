@@ -12,7 +12,13 @@ import { readyEventName, runtimeVersion, totalShardCount } from "./compat.ts";
 import { enableLogging, logger } from "./logger.ts";
 import { Tracing } from "./tracing.ts";
 import { type SendResult, Transport } from "./transport.ts";
-import type { ReleasePayload, RemoteConfig, ShardMonitorOptions, ShardStatus, TelemetryReport } from "./types.ts";
+import type {
+	ReleasePayload,
+	RemoteConfig,
+	ShardMonitorOptions,
+	ShardStatus,
+	TelemetryReport,
+} from "./types.ts";
 import { PACKAGE_VERSION } from "./utils/version.ts";
 
 const DEFAULT_ENDPOINT = "https://dash.upbot.app/api/telemetry";
@@ -53,7 +59,7 @@ export class ShardMonitor {
 
 	constructor({
 		client,
-		token = readTokenFromEnv(),
+		token = process.env.UPBOT_TOKEN,
 		endpoint,
 		interval = DEFAULT_INTERVAL_MS,
 		debug = false,
@@ -83,14 +89,16 @@ export class ShardMonitor {
 		if (this.rateLimits) this.rateLimits.issues = this.issues;
 
 		if (!token) {
-			logger.error("ShardMonitor: no token, pass `token` or set UPBOT_TOKEN — monitoring is disabled");
+			logger.error("BotMonitor: no token, pass `token` or set UPBOT_TOKEN, monitoring is disabled");
 			this.transport = undefined;
 
 			return;
 		}
 
 		const tracingRef = this.tracing;
-		this.transport = new Transport(resolveEndpoint(endpoint), token, undefined, (fn) => tracingRef.untraced(fn));
+		this.transport = new Transport(resolveEndpoint(endpoint), token, undefined, (fn) =>
+			tracingRef.untraced(fn),
+		);
 
 		if (this.client.isReady()) {
 			this.start();
@@ -107,7 +115,7 @@ export class ShardMonitor {
 
 		this.started = true;
 
-		logger.info(`Shard monitor started for ${this.client.user?.tag ?? "unknown client"}`);
+		logger.info(`Monitor started for ${this.client.user?.tag ?? "unknown client"}`);
 
 		this.shards.register();
 		// Before interactions: the event tracer dispatches listeners itself only over the plain emit
@@ -206,7 +214,9 @@ export class ShardMonitor {
 		}
 
 		if (result.fatal) {
-			logger.error(`ShardMonitor: the token was refused (HTTP ${result.status}), monitoring is disabled`);
+			logger.error(
+				`BotMonitor: the token was refused (HTTP ${result.status}), monitoring is disabled`,
+			);
 			this.destroy();
 
 			return;
@@ -218,10 +228,12 @@ export class ShardMonitor {
 		if (result.status === 429 || this.failures > 1) {
 			logger.debug(`Report failed, retrying: ${result.reason}`);
 		} else {
-			logger.warn(`ShardMonitor: report failed, retrying with backoff: ${result.reason}`);
+			logger.warn(`BotMonitor: report failed, retrying with backoff: ${result.reason}`);
 		}
 
-		this.schedule(result.retryAfterMs ?? Math.min(this.interval * 2 ** this.failures, MAX_BACKOFF_MS));
+		this.schedule(
+			result.retryAfterMs ?? Math.min(this.interval * 2 ** this.failures, MAX_BACKOFF_MS),
+		);
 	}
 
 	/** Sends one report. Concurrent calls share the request in flight. */
@@ -268,7 +280,9 @@ export class ShardMonitor {
 			...(runtimeStats ? { runtime_stats: runtimeStats } : {}),
 		};
 
-		logger.debug(`Reporting ${report.shards.length} shard(s) and ${interactions.length} interaction name(s)`);
+		logger.debug(
+			`Reporting ${report.shards.length} shard(s) and ${interactions.length} interaction name(s)`,
+		);
 
 		const result = await transport.send(report);
 
@@ -281,7 +295,7 @@ export class ShardMonitor {
 		}
 
 		if (!result.ok && result.discard && !result.fatal) {
-			logger.error(`ShardMonitor: report rejected: ${result.reason}`);
+			logger.error(`BotMonitor: report rejected: ${result.reason}`);
 		}
 
 		return result;
@@ -312,7 +326,7 @@ export class ShardMonitor {
 		try {
 			await this.shutdown();
 		} catch (error) {
-			logger.error("ShardMonitor: failed to shutdown cleanly", error);
+			logger.error("BotMonitor: failed to shutdown cleanly", error);
 		}
 
 		if (process.listenerCount(signal) === 0) {
@@ -325,10 +339,6 @@ function clampInterval(interval: number): number {
 	if (!Number.isFinite(interval)) return DEFAULT_INTERVAL_MS;
 
 	return Math.min(Math.max(interval, MIN_INTERVAL_MS), MAX_INTERVAL_MS);
-}
-
-function readTokenFromEnv(): string | undefined {
-	return typeof process !== "undefined" ? process.env.UPBOT_TOKEN : undefined;
 }
 
 function resolveEndpoint(endpoint: string | undefined): string {

@@ -2,17 +2,13 @@ import * as nodeModule from "node:module";
 import { createRequire } from "node:module";
 import { pathToFileURL } from "node:url";
 import { isSpanContextValid, trace } from "@opentelemetry/api";
-import { getNodeAutoInstrumentations, type InstrumentationConfigMap } from "@opentelemetry/auto-instrumentations-node";
+import {
+	getNodeAutoInstrumentations,
+	type InstrumentationConfigMap,
+} from "@opentelemetry/auto-instrumentations-node";
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { logger } from "./logger.ts";
-
-/**
- * OpenTelemetry setup for Discord bots, sending traces to Upbot.
- *
- * Call it before the bot loads its other modules, so the database and HTTP libraries get
- * instrumented: first line of the entry file, or `--import`/`--require` of the register entry.
- */
 
 export const DEFAULT_TRACES_ENDPOINT = "https://dash.upbot.app/api/otlp/v1/traces";
 
@@ -56,10 +52,15 @@ export function isDiscordGateway(host: string | undefined | null): boolean {
 	return /^gateway[\w-]*\.discord\.gg$/.test(hostname);
 }
 
-type HookedConfig = { ignoreOutgoingRequestHook?: (request: never) => boolean; ignoreRequestHook?: (request: never) => boolean };
+type HookedConfig = {
+	ignoreOutgoingRequestHook?: (request: never) => boolean;
+	ignoreRequestHook?: (request: never) => boolean;
+};
 
 /** Default settings per instrumentation, the ones passed in `instrumentations` are merged over them. */
-function defaultInstrumentations(overrides: InstrumentationConfigMap = {}): InstrumentationConfigMap {
+function defaultInstrumentations(
+	overrides: InstrumentationConfigMap = {},
+): InstrumentationConfigMap {
 	const config: Record<string, Record<string, unknown>> = Object.fromEntries(
 		DISABLED_INSTRUMENTATIONS.map((name) => [name, { enabled: false }]),
 	);
@@ -109,7 +110,10 @@ function ratioSampler(rate: number): Sampler {
 			const parent = trace.getSpanContext(context);
 
 			if (parent !== undefined && isSpanContextValid(parent)) {
-				return { decision: (parent.traceFlags & SAMPLED_FLAG) === SAMPLED_FLAG ? RECORD_AND_SAMPLED : NOT_RECORD };
+				return {
+					decision:
+						(parent.traceFlags & SAMPLED_FLAG) === SAMPLED_FLAG ? RECORD_AND_SAMPLED : NOT_RECORD,
+				};
 			}
 
 			const accumulated = Number.parseInt(traceId.slice(-8), 16);
@@ -146,7 +150,8 @@ type GlobalWithSdk = typeof globalThis & { [SDK_KEY]?: NodeSDK };
  * so an ESM bot loads its code with `await import()` once tracing started.
  */
 function registerEsmHook(): void {
-	const register = (nodeModule as { register?: (specifier: string, parentURL?: string) => void }).register;
+	const register = (nodeModule as { register?: (specifier: string, parentURL?: string) => void })
+		.register;
 
 	if (typeof register !== "function") {
 		return;
@@ -154,17 +159,25 @@ function registerEsmHook(): void {
 
 	try {
 		const fromHere = createRequire(import.meta.url);
-		const fromInstrumentations = createRequire(fromHere.resolve("@opentelemetry/auto-instrumentations-node"));
+		const fromInstrumentations = createRequire(
+			fromHere.resolve("@opentelemetry/auto-instrumentations-node"),
+		);
 
-		register(pathToFileURL(fromInstrumentations.resolve("@opentelemetry/instrumentation/hook.mjs")).href);
+		register(
+			pathToFileURL(fromInstrumentations.resolve("@opentelemetry/instrumentation/hook.mjs")).href,
+		);
 	} catch (error) {
-		logger.debug("ES modules will not be instrumented, the loader hook could not be registered", error);
+		logger.debug(
+			"ES modules will not be instrumented, the loader hook could not be registered",
+			error,
+		);
 	}
 }
 
 /**
- * Starts OpenTelemetry once per process. Returns the SDK, to `await sdk.shutdown()` before exiting
- * if the last spans matter.
+ * Starts OpenTelemetry once per process, sending traces to Upbot. Call it before the bot loads its
+ * other modules, so the database and HTTP libraries get instrumented. Returns the SDK, to
+ * `await sdk.shutdown()` before exiting if the last spans matter.
  */
 export function startTracing(options: TracingOptions = {}): NodeSDK | undefined {
 	const scope = globalThis as GlobalWithSdk;
@@ -176,7 +189,7 @@ export function startTracing(options: TracingOptions = {}): NodeSDK | undefined 
 	const token = options.token ?? process.env.UPBOT_TOKEN;
 
 	if (!token) {
-		logger.error("startTracing: no token, pass `token` or set UPBOT_TOKEN — tracing is disabled");
+		logger.error("startTracing: no token, pass `token` or set UPBOT_TOKEN, tracing is disabled");
 
 		return undefined;
 	}
@@ -186,8 +199,12 @@ export function startTracing(options: TracingOptions = {}): NodeSDK | undefined 
 	}
 
 	const sdk = new NodeSDK({
-		instrumentations: [getNodeAutoInstrumentations(defaultInstrumentations(options.instrumentations))],
-		sampler: ratioSampler(options.sampleRate ?? readRate(process.env.UPBOT_TRACES_SAMPLE_RATE) ?? 1),
+		instrumentations: [
+			getNodeAutoInstrumentations(defaultInstrumentations(options.instrumentations)),
+		],
+		sampler: ratioSampler(
+			options.sampleRate ?? readRate(process.env.UPBOT_TRACES_SAMPLE_RATE) ?? 1,
+		),
 		serviceName: options.serviceName ?? process.env.OTEL_SERVICE_NAME ?? "discord-bot",
 		traceExporter: new OTLPTraceExporter({
 			headers: { Authorization: `Bearer ${token}` },

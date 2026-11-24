@@ -4,7 +4,16 @@ import { dirname, join, relative, resolve } from "node:path";
 import type { ReleasePayload } from "./types.ts";
 
 const SOURCE_EXTENSIONS = /\.(?:[cm]?js|[cm]?ts|jsx|tsx|json)$/u;
-const SKIPPED_DIRECTORIES = new Set(["node_modules", ".git", ".cache", ".next", "coverage", ".turbo", "logs", "tmp"]);
+const SKIPPED_DIRECTORIES = new Set([
+	"node_modules",
+	".git",
+	".cache",
+	".next",
+	"coverage",
+	".turbo",
+	"logs",
+	"tmp",
+]);
 const MAX_FILES = 5_000;
 const MAX_FILE_SIZE = 1024 * 1024;
 
@@ -13,7 +22,9 @@ const MAX_FILE_SIZE = 1024 * 1024;
  * UPBOT_RELEASE when set, else the git commit, else a hash of the source files, since most
  * bots have no release process and are just edited and restarted.
  */
-export async function detectRelease(directory: string = process.cwd()): Promise<ReleasePayload | undefined> {
+export async function detectRelease(
+	directory: string = process.cwd(),
+): Promise<ReleasePayload | undefined> {
 	const fromEnv = process.env.UPBOT_RELEASE?.trim();
 
 	if (fromEnv) {
@@ -58,7 +69,10 @@ export async function gitCommit(directory: string): Promise<string | undefined> 
 
 			const packed = await readFile(join(gitDirectory, "packed-refs"), "utf8").catch(() => "");
 
-			return packed.split("\n").find((line) => line.endsWith(` ${ref}`))?.slice(0, 40);
+			return packed
+				.split("\n")
+				.find((line) => line.endsWith(` ${ref}`))
+				?.slice(0, 40);
 		}
 
 		const parent = dirname(current);

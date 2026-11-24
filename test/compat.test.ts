@@ -1,5 +1,11 @@
 import { describe, expect, test } from "bun:test";
-import { ownedShardIds, readyEventName, shardPing, socketStatus, totalShardCount } from "../src/compat.ts";
+import {
+	ownedShardIds,
+	readyEventName,
+	shardPing,
+	socketStatus,
+	totalShardCount,
+} from "../src/compat.ts";
 import { FakeClient } from "./helpers.ts";
 
 describe("discord.js compatibility", () => {
@@ -22,7 +28,10 @@ describe("discord.js compatibility", () => {
 	test("falls back to internal sharding, then to shard 0", () => {
 		const client = new FakeClient();
 
-		client.ws.shards = new Map([[1, { status: 0, ping: 10 }], [0, { status: 0, ping: 20 }]]);
+		client.ws.shards = new Map([
+			[1, { status: 0, ping: 10 }],
+			[0, { status: 0, ping: 20 }],
+		]);
 		client.options.shardCount = 2;
 
 		expect(ownedShardIds(client.asClient())).toEqual([0, 1]);

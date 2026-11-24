@@ -16,7 +16,7 @@ export class GuildIssueCollector {
 			return;
 		}
 
-		const key = `${context.guildId} ${context.type} ${context.name} ${route} ${code}`;
+		const key = issueKey(context.guildId, context.type, context.name, route, code);
 		let issue = this.issues.get(key);
 
 		if (!issue) {
@@ -49,7 +49,7 @@ export class GuildIssueCollector {
 	/** Puts back issues that could not be sent, they go out with the next report. */
 	restore(list: GuildIssuePayload[]): void {
 		for (const item of list) {
-			const key = `${item.guild_id} ${item.type} ${item.name} ${item.route} ${item.code}`;
+			const key = issueKey(item.guild_id, item.type, item.name, item.route, item.code);
 			const existing = this.issues.get(key);
 
 			if (existing) {
@@ -59,4 +59,8 @@ export class GuildIssueCollector {
 			}
 		}
 	}
+}
+
+function issueKey(...parts: string[]): string {
+	return parts.join(" ");
 }

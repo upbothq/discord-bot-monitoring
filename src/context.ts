@@ -15,7 +15,8 @@ export interface DiscordContext {
  * Follows the listeners of each interaction and event through their async calls, so a failed
  * REST request can be attributed to the guild and the command that made it.
  */
-export const discordContext: AsyncLocalStorage<DiscordContext> = new AsyncLocalStorage<DiscordContext>();
+export const discordContext: AsyncLocalStorage<DiscordContext> =
+	new AsyncLocalStorage<DiscordContext>();
 
 /** Bitfield of a discord.js PermissionsBitField (bigint) or a raw API string. */
 export function permissionsBitfield(value: unknown): string | null {

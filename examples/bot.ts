@@ -1,32 +1,19 @@
-const { Client, GatewayIntentBits } = require("discord.js");
-const { ShardMonitor } = require("@upbothq/discord-bot-monitoring");
+import { Client, GatewayIntentBits } from "discord.js";
+import { BotMonitor } from "@upbothq/discord-bot-monitoring";
 
-// This file is spawned as a shard by shard.js (ShardingManager).
-// client.shard is only available in this context, which is required by ShardMonitor.
-const client = new Client({
-	intents: [GatewayIntentBits.Guilds],
-});
+// Runs as a standalone bot, or as one shard when spawned by shard.ts
+const client = new Client({ intents: [GatewayIntentBits.Guilds] });
 
-// Initialize the ShardMonitor inside the shard process
-const monitor = new ShardMonitor({
+new BotMonitor({
 	client,
 	token: process.env.UPBOT_TOKEN,
+	// Unset in production, points to a local dashboard while developing
 	endpoint: process.env.UPBOT_ENDPOINT,
+	debug: true,
 });
-
-console.log("Shard process started, waiting for clientReady event...");
-// console.log(monitor);
 
 client.once("clientReady", () => {
-	console.log(`Logged in as ${client.user?.tag}!`);
-	  if (client.shard?.ids?.includes(0)) {
-		process.exit(1);
-    // setTimeout(() => {
-    //   throw new Error("Intentional shard crash for testing");
-    // }, 15000);
-  }
-
+	console.log(`Logged in as ${client.user?.tag}`);
 });
 
-// Login to Discord with your bot's token
 client.login(process.env.DISCORD_BOT_TOKEN);

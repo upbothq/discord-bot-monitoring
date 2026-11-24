@@ -4,7 +4,12 @@ import { button, chatInput, FakeClient, sleep } from "./helpers.ts";
 
 function setup(ackDeadlineMs = 3_000) {
 	const client = new FakeClient();
-	const collector = new InteractionCollector(client.asClient(), undefined, undefined, ackDeadlineMs);
+	const collector = new InteractionCollector(
+		client.asClient(),
+		undefined,
+		undefined,
+		ackDeadlineMs,
+	);
 
 	collector.register();
 
@@ -23,7 +28,13 @@ describe("InteractionCollector", () => {
 
 		const [metric] = collector.snapshot();
 
-		expect(metric).toMatchObject({ type: "chat_input", name: "/ticket create", calls: 1, errors: 0, unanswered: 0 });
+		expect(metric).toMatchObject({
+			type: "chat_input",
+			name: "/ticket create",
+			calls: 1,
+			errors: 0,
+			unanswered: 0,
+		});
 		expect(metric?.latency_buckets[0]).toBe(1);
 		expect(collector.snapshot()).toEqual([]);
 	});
@@ -69,7 +80,8 @@ describe("InteractionCollector", () => {
 		const interaction = chatInput("late");
 		let caught: unknown;
 
-		interaction.reply = () => Promise.reject(Object.assign(new Error("Unknown interaction"), { code: 10062 }));
+		interaction.reply = () =>
+			Promise.reject(Object.assign(new Error("Unknown interaction"), { code: 10062 }));
 		client.on("interactionCreate", async (received: { reply: () => Promise<void> }) => {
 			try {
 				await received.reply();
@@ -94,7 +106,9 @@ describe("InteractionCollector", () => {
 		client.emit("interactionCreate", button("ticket:close:876543210987654321"));
 		await sleep(0);
 
-		expect(collector.snapshot()).toMatchObject([{ type: "button", name: "ticket:close:*", calls: 2 }]);
+		expect(collector.snapshot()).toMatchObject([
+			{ type: "button", name: "ticket:close:*", calls: 2 },
+		]);
 	});
 
 	test("caps the number of distinct names", () => {
