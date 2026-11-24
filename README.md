@@ -1,8 +1,8 @@
 <p align="center">
 	<a href="https://upbot.app/discord-bot-monitoring">
 		<picture>
-			<source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/upbothq/discord-bot-monitoring/main/.github/assets/upbot-logo-dark.svg">
-			<img alt="Upbot" src="https://raw.githubusercontent.com/upbothq/discord-bot-monitoring/main/.github/assets/upbot-logo-light.svg" width="220">
+			<source media="(prefers-color-scheme: dark)" srcset=".github/assets/upbot-logo-dark.svg">
+			<img alt="Upbot" src=".github/assets/upbot-logo-light.svg" width="220">
 		</picture>
 	</a>
 </p>
