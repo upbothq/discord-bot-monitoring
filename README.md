@@ -66,6 +66,46 @@ Your bot shows up in Upbot within seconds. `token` defaults to the `UPBOT_TOKEN`
 | `interval`     | `10000`                   | Report interval in milliseconds.                |
 | `debug`        | `false`                   | Log what the SDK does.                          |
 
+## Traces
+
+Install OpenTelemetry next to the SDK:
+
+```bash
+npm install @opentelemetry/api @opentelemetry/sdk-node @opentelemetry/auto-instrumentations-node @opentelemetry/exporter-trace-otlp-http
+```
+
+Then load the `register` entry before discord.js and your database, so their calls get traced:
+
+```ts
+// CommonJS: first line of the entry file
+require("@upbothq/discord-bot-monitoring/register");
+
+// ES modules: in the file your host starts, then import the bot
+import "@upbothq/discord-bot-monitoring/register";
+await import("./bot.js");
+```
+
+`register` is configured from the environment:
+
+| Variable                   | Default       | Description                                   |
+| -------------------------- | ------------- | --------------------------------------------- |
+| `UPBOT_TOKEN`              |               | Monitor token from the Upbot dashboard.       |
+| `UPBOT_TRACES_SAMPLE_RATE` | `1`           | Share of the traces to send, from `0` to `1`. |
+| `OTEL_SERVICE_NAME`        | `discord-bot` | Name of the bot in the traces.                |
+
+To pass options in code instead, call `startTracing()` from `@upbothq/discord-bot-monitoring/otel` with `token`, `sampleRate`, `serviceName` or `instrumentations`.
+
+### Sampling
+
+Each trace is kept or dropped as a whole, so a kept command keeps all its SQL and HTTP spans.
+
+- Choose the share of traces in the bot's **Settings** in the dashboard. The SDK applies it on its next report, within seconds, without a restart.
+- Below 100%, failed traces are always sent, so errors are never missed.
+- The dashboard can only lower the rate set by `UPBOT_TRACES_SAMPLE_RATE` or `sampleRate`, never raise it.
+- Once the plan's monthly trace quota is reached, only failed traces are sent.
+
+This needs `BotMonitor` and tracing in the same process, and version 0.4.0 or later.
+
 ---
 
 <p align="center">
