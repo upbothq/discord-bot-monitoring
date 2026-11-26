@@ -1,6 +1,6 @@
 {
 	"name": "@upbothq/discord-bot-monitoring",
-	"version": "0.4.0",
+	"version": "0.4.1",
 	"description": "Upbot monitoring for discord.js bots: uptime, shards, commands, traces, rate limits and memory",
 	"keywords": [
 		"apm",
