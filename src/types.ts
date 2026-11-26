@@ -127,4 +127,8 @@ export interface RemoteConfig {
 	interval_ms?: number;
 	interactions?: boolean;
 	rate_limits?: boolean;
+	traces?: {
+		sample_rate?: number;
+		errors_only?: boolean;
+	};
 }

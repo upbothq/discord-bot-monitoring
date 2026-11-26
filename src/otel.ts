@@ -9,6 +9,7 @@ import {
 import { OTLPTraceExporter } from "@opentelemetry/exporter-trace-otlp-http";
 import { NodeSDK, type NodeSDKConfiguration } from "@opentelemetry/sdk-node";
 import { logger } from "./logger.ts";
+import { remoteSampling } from "./sampling.ts";
 
 export const DEFAULT_TRACES_ENDPOINT = "https://dash.upbot.app/api/otlp/v1/traces";
 
@@ -29,7 +30,7 @@ export interface TracingOptions {
 	endpoint?: string;
 	/** Name of the bot in the traces. Defaults to OTEL_SERVICE_NAME, then "discord-bot". */
 	serviceName?: string;
-	/** Share of the traces to keep, from 0 to 1. Defaults to UPBOT_TRACES_SAMPLE_RATE, then 1. */
+	/** Share of the traces to keep, from 0 to 1. Defaults to UPBOT_TRACES_SAMPLE_RATE, then 1. The dashboard can lower it, not raise it. */
 	sampleRate?: number;
 	/** Per instrumentation settings, merged over the defaults, e.g. { "@opentelemetry/instrumentation-fs": { enabled: true } }. */
 	instrumentations?: InstrumentationConfigMap;
@@ -98,13 +99,83 @@ const NOT_RECORD = 0;
 const RECORD_AND_SAMPLED = 2;
 const SAMPLED_FLAG = 1;
 
-/**
- * Keeps a share of the traces, decided once per trace from its id; spans follow their parent,
- * so a kept interaction keeps all its database and HTTP spans.
- */
-function ratioSampler(rate: number): Sampler {
+// SpanStatusCode.ERROR and ExportResultCode.SUCCESS, stable across versions
+const ERROR_STATUS = 2;
+const EXPORT_SUCCESS = 0;
+
+/** Traces held back at most, waiting to know whether they fail; the oldest are dropped first. */
+const MAX_HELD_TRACES = 2000;
+
+type SpanExporter = NonNullable<NodeSDKConfiguration["traceExporter"]>;
+type ReadableSpans = Parameters<SpanExporter["export"]>[0];
+
+/** The fields read from an ended span, named differently across SDK versions for the parent. */
+type EndedSpan = {
+	spanContext(): { traceId: string };
+	status: { code: number };
+	parentSpanId?: string;
+	parentSpanContext?: unknown;
+};
+
+function inRatio(traceId: string, rate: number): boolean {
 	const bound = Math.floor(Math.min(Math.max(rate, 0), 1) * 0xffffffff);
 
+	return Number.parseInt(traceId.slice(-8), 16) <= bound;
+}
+
+/**
+ * Traces outside the sample rate that are still recorded because failed traces are kept: their
+ * spans wait here and are only exported once one of them fails.
+ */
+export class HeldTraces {
+	// null once the root span ended without an error: later spans of the trace are dropped too
+	private readonly traces = new Map<string, EndedSpan[] | null>();
+
+	hold(traceId: string): void {
+		if (this.traces.size >= MAX_HELD_TRACES) {
+			const oldest = this.traces.keys().next().value;
+
+			if (oldest !== undefined) {
+				this.traces.delete(oldest);
+			}
+		}
+
+		this.traces.set(traceId, []);
+	}
+
+	/** Returns the spans to export now, keeping back the ones of traces that did not fail yet. */
+	release(spans: readonly EndedSpan[]): EndedSpan[] {
+		const ready: EndedSpan[] = [];
+
+		for (const span of spans) {
+			const traceId = span.spanContext().traceId;
+			const held = this.traces.get(traceId);
+
+			if (held === undefined) {
+				ready.push(span);
+			} else if (held === null) {
+				continue;
+			} else if (span.status.code === ERROR_STATUS) {
+				// The trace failed: send what was held, the spans after it are not held anymore
+				this.traces.delete(traceId);
+				ready.push(...held, span);
+			} else if (!(span.parentSpanContext ?? span.parentSpanId)) {
+				this.traces.set(traceId, null);
+			} else {
+				held.push(span);
+			}
+		}
+
+		return ready;
+	}
+}
+
+/**
+ * Keeps a share of the traces, decided once per trace from its id; spans follow their parent,
+ * so a kept interaction keeps all its database and HTTP spans. The rate is the lowest of the local
+ * one and the one the dashboard sends, read for every new trace so it changes without a restart.
+ */
+export function upbotSampler(localRate: number, held: HeldTraces): Sampler {
 	return {
 		shouldSample(context, traceId) {
 			const parent = trace.getSpanContext(context);
@@ -116,14 +187,44 @@ function ratioSampler(rate: number): Sampler {
 				};
 			}
 
-			const accumulated = Number.parseInt(traceId.slice(-8), 16);
+			const remote = remoteSampling();
 
-			return { decision: accumulated <= bound ? RECORD_AND_SAMPLED : NOT_RECORD };
+			if (inRatio(traceId, Math.min(localRate, remote?.rate ?? 1))) {
+				return { decision: RECORD_AND_SAMPLED };
+			}
+
+			if (!remote?.errorsOnly) {
+				return { decision: NOT_RECORD };
+			}
+
+			// Whether it fails is only known once its spans end
+			held.hold(traceId);
+
+			return { decision: RECORD_AND_SAMPLED };
 		},
 		toString() {
-			return `UpbotRatioSampler{${rate}}`;
+			return `UpbotSampler{${localRate}}`;
 		},
 	} as Sampler;
+}
+
+/** Leaves out the spans of held traces until they fail. */
+export function holdingExporter(exporter: SpanExporter, held: HeldTraces): SpanExporter {
+	return {
+		export(spans, resultCallback) {
+			const ready = held.release(spans as unknown as EndedSpan[]);
+
+			if (ready.length === 0) {
+				resultCallback({ code: EXPORT_SUCCESS });
+
+				return;
+			}
+
+			exporter.export(ready as unknown as ReadableSpans, resultCallback);
+		},
+		shutdown: () => exporter.shutdown(),
+		forceFlush: () => exporter.forceFlush?.() ?? Promise.resolve(),
+	};
 }
 
 function readRate(value: string | undefined): number | undefined {
@@ -198,18 +299,24 @@ export function startTracing(options: TracingOptions = {}): NodeSDK | undefined 
 		registerEsmHook();
 	}
 
+	const held = new HeldTraces();
+
 	const sdk = new NodeSDK({
 		instrumentations: [
 			getNodeAutoInstrumentations(defaultInstrumentations(options.instrumentations)),
 		],
-		sampler: ratioSampler(
+		sampler: upbotSampler(
 			options.sampleRate ?? readRate(process.env.UPBOT_TRACES_SAMPLE_RATE) ?? 1,
+			held,
 		),
 		serviceName: options.serviceName ?? process.env.OTEL_SERVICE_NAME ?? "discord-bot",
-		traceExporter: new OTLPTraceExporter({
-			headers: { Authorization: `Bearer ${token}` },
-			url: options.endpoint ?? process.env.UPBOT_TRACES_ENDPOINT ?? DEFAULT_TRACES_ENDPOINT,
-		}),
+		traceExporter: holdingExporter(
+			new OTLPTraceExporter({
+				headers: { Authorization: `Bearer ${token}` },
+				url: options.endpoint ?? process.env.UPBOT_TRACES_ENDPOINT ?? DEFAULT_TRACES_ENDPOINT,
+			}),
+			held,
+		),
 	});
 
 	sdk.start();

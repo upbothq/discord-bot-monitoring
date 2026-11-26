@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { ShardMonitor } from "../src/monitor.ts";
+import { remoteSampling, setRemoteSampling } from "../src/sampling.ts";
 import { chatInput, FakeClient, fakeDashboard, sleep, waitFor } from "./helpers.ts";
 
 let monitors: ShardMonitor[] = [];
@@ -43,6 +44,7 @@ afterEach(() => {
 	dashboards.forEach((instance) => instance.stop());
 	monitors = [];
 	dashboards = [];
+	setRemoteSampling(undefined);
 });
 
 describe("ShardMonitor", () => {
@@ -129,6 +131,17 @@ describe("ShardMonitor", () => {
 		expect(api.requests[1]?.body.interactions).toMatchObject([
 			{ type: "chat_input", name: "/ping", calls: 1 },
 		]);
+	});
+
+	test("applies the trace sampling the dashboard sends back", async () => {
+		const api = dashboard(() =>
+			Response.json({ traces: { sample_rate: 0.25, errors_only: true } }),
+		);
+
+		monitor({ client: shardedClient().asClient(), token: "secret", endpoint: api.url });
+		await waitFor(() => remoteSampling() !== undefined);
+
+		expect(remoteSampling()).toEqual({ rate: 0.25, errorsOnly: true });
 	});
 
 	test("stops for good when the token is refused", async () => {

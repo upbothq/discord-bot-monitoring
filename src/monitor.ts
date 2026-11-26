@@ -9,6 +9,7 @@ import { InteractionCollector } from "./collectors/interactions.ts";
 import { RateLimitCollector } from "./collectors/rate-limits.ts";
 import { ShardCollector } from "./collectors/shards.ts";
 import { readyEventName, runtimeVersion, totalShardCount } from "./compat.ts";
+import { setRemoteSampling } from "./sampling.ts";
 import { enableLogging, logger } from "./logger.ts";
 import { Tracing } from "./tracing.ts";
 import { type SendResult, Transport } from "./transport.ts";
@@ -314,6 +315,14 @@ export class ShardMonitor {
 
 		if (this.rateLimits && typeof config.rate_limits === "boolean") {
 			this.rateLimits.enabled = config.rate_limits;
+		}
+
+		// Read by the tracing SDK for every new trace, when startTracing() runs in this process
+		if (config.traces && Number.isFinite(config.traces.sample_rate)) {
+			setRemoteSampling({
+				rate: Math.min(Math.max(config.traces.sample_rate as number, 0), 1),
+				errorsOnly: config.traces.errors_only === true,
+			});
 		}
 	}
 
