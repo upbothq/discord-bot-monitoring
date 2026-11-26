@@ -113,3 +113,22 @@ test("exports held traces only when they fail", async () => {
 	send([span(DROPPED)]);
 	expect(exported).toHaveLength(3);
 });
+
+test("keeps the held spans bounded, dropping the oldest traces", () => {
+	const held = new HeldTraces();
+	const first = "0123456789abcdef0123456700000001";
+	const second = "0123456789abcdef0123456700000002";
+
+	held.hold(first);
+	held.hold(second);
+	held.release(Array.from({ length: 9_000 }, () => span(first)));
+	held.release(Array.from({ length: 2_000 }, () => span(second)));
+
+	// The first trace made room: its spans are gone, and so are the ones that come later
+	expect(held.size).toBe(2_000);
+	expect(held.release([span(first, { error: true })])).toEqual([]);
+
+	// The root of the second ends without an error: nothing is left
+	held.release([span(second, { root: true })]);
+	expect(held.size).toBe(0);
+});

@@ -106,6 +106,9 @@ const EXPORT_SUCCESS = 0;
 /** Traces held back at most, waiting to know whether they fail; the oldest are dropped first. */
 const MAX_HELD_TRACES = 2000;
 
+/** Spans held back at most, whatever their traces: keeps the memory of a busy bot bounded. */
+const MAX_HELD_SPANS = 10_000;
+
 type SpanExporter = NonNullable<NodeSDKConfiguration["traceExporter"]>;
 type ReadableSpans = Parameters<SpanExporter["export"]>[0];
 
@@ -130,17 +133,38 @@ function inRatio(traceId: string, rate: number): boolean {
 export class HeldTraces {
 	// null once the root span ended without an error: later spans of the trace are dropped too
 	private readonly traces = new Map<string, EndedSpan[] | null>();
+	private heldSpans = 0;
+
+	/** Spans currently held back, for the tests. */
+	get size(): number {
+		return this.heldSpans;
+	}
 
 	hold(traceId: string): void {
 		if (this.traces.size >= MAX_HELD_TRACES) {
 			const oldest = this.traces.keys().next().value;
 
 			if (oldest !== undefined) {
+				this.heldSpans -= this.traces.get(oldest)?.length ?? 0;
 				this.traces.delete(oldest);
 			}
 		}
 
 		this.traces.set(traceId, []);
+	}
+
+	/** Drops the oldest held traces until the spans fit again; their later spans are dropped too. */
+	private evictSpans(): void {
+		for (const [traceId, held] of this.traces) {
+			if (this.heldSpans <= MAX_HELD_SPANS) {
+				return;
+			}
+
+			if (held !== null) {
+				this.heldSpans -= held.length;
+				this.traces.set(traceId, null);
+			}
+		}
 	}
 
 	/** Returns the spans to export now, keeping back the ones of traces that did not fail yet. */
@@ -157,12 +181,16 @@ export class HeldTraces {
 				continue;
 			} else if (span.status.code === ERROR_STATUS) {
 				// The trace failed: send what was held, the spans after it are not held anymore
+				this.heldSpans -= held.length;
 				this.traces.delete(traceId);
 				ready.push(...held, span);
 			} else if (!(span.parentSpanContext ?? span.parentSpanId)) {
+				this.heldSpans -= held.length;
 				this.traces.set(traceId, null);
 			} else {
 				held.push(span);
+				this.heldSpans++;
+				this.evictSpans();
 			}
 		}
 
