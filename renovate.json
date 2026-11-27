@@ -5,6 +5,10 @@
 		{
 			"matchManagers": ["github-actions"],
 			"groupName": "github actions"
+		},
+		{
+			"matchPackageNames": ["oxfmt", "oxlint", "oxlint-tsgolint"],
+			"groupName": "oxc tooling"
 		}
 	]
 }
