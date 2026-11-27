@@ -2,11 +2,7 @@ import { afterAll, beforeAll, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { context, trace } from "@opentelemetry/api";
 import { AsyncLocalStorageContextManager } from "@opentelemetry/context-async-hooks";
-import {
-	BasicTracerProvider,
-	InMemorySpanExporter,
-	SimpleSpanProcessor,
-} from "@opentelemetry/sdk-trace-base";
+import { InMemorySpanExporter, type SpanProcessor, TracerProvider } from "@opentelemetry/sdk-trace";
 import { EventTracer } from "../src/collectors/events.ts";
 import { InteractionCollector } from "../src/collectors/interactions.ts";
 import { Tracing } from "../src/tracing.ts";
@@ -15,10 +11,17 @@ import { chatInput, FakeClient, sleep } from "./helpers.ts";
 const exporter = new InMemorySpanExporter();
 const contextManager = new AsyncLocalStorageContextManager();
 
-beforeAll(() => {
-	const provider = new BasicTracerProvider();
+// SimpleSpanProcessor exports asynchronously, the assertions below read the spans right away
+const syncProcessor: SpanProcessor = {
+	onStart: () => {},
+	onEnd: (span) => exporter.export([span], () => {}),
+	forceFlush: async () => {},
+	shutdown: async () => {},
+};
 
-	provider.addSpanProcessor(new SimpleSpanProcessor(exporter));
+beforeAll(() => {
+	const provider = new TracerProvider({ spanProcessors: [syncProcessor] });
+
 	context.setGlobalContextManager(contextManager.enable());
 	trace.setGlobalTracerProvider(provider);
 });
@@ -51,7 +54,7 @@ test("database spans of the bot become children of the interaction span", async 
 	const query = spans.find((span) => span.name === "SELECT tickets");
 
 	expect(root?.attributes["discord.interaction.type"]).toBe("chat_input");
-	expect(query?.parentSpanId).toBe(root?.spanContext().spanId);
+	expect(query?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId);
 	expect(query?.spanContext().traceId).toBe(root?.spanContext().traceId);
 });
 
@@ -95,10 +98,10 @@ test("each event the bot listens to gets its own trace, lasting until async list
 	const root = spans.find((span) => span.name === "event messageCreate");
 	const query = spans.find((span) => span.name === "find messages");
 
-	expect(root?.parentSpanId).toBeUndefined();
+	expect(root?.parentSpanContext?.spanId).toBeUndefined();
 	expect(root?.attributes["discord.event.name"]).toBe("messageCreate");
 	expect(root?.attributes["discord.guild.id"]).toBe("123");
-	expect(query?.parentSpanId).toBe(root?.spanContext().spanId);
+	expect(query?.parentSpanContext?.spanId).toBe(root?.spanContext().spanId);
 	// The span waited for the listener instead of ending when emit returned
 	expect(root?.duration[1] ?? 0).toBeGreaterThan(15_000_000);
 	events.unregister();

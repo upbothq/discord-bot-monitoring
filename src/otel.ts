@@ -94,7 +94,7 @@ function defaultInstrumentations(
 
 type Sampler = NonNullable<NodeSDKConfiguration["sampler"]>;
 
-// SamplingDecision of @opentelemetry/sdk-trace-base, stable across versions
+// SamplingDecision of @opentelemetry/sdk-trace, stable across versions
 const NOT_RECORD = 0;
 const RECORD_AND_SAMPLED = 2;
 const SAMPLED_FLAG = 1;
