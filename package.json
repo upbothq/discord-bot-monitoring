@@ -98,7 +98,7 @@
 		"bumpp": "^10.3.2",
 		"bunup": "^0.16.17",
 		"discord.js": "^14.25.1",
-		"oxfmt": "^0.40.0",
+		"oxfmt": "^0.80.0",
 		"oxlint": "^1.55.0",
 		"oxlint-tsgolint": "^0.16.0",
 		"simple-git-hooks": "^2.13.1",
