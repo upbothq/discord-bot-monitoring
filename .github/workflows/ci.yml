@@ -41,3 +41,59 @@ jobs:
 
       - name: Run tests
         run: bun run test
+
+  compat:
+    name: discord.js ${{ matrix.discordjs }} on ${{ matrix.runtime }}
+    runs-on: ubuntu-latest
+    # The v15 dev builds change every day: a break there is reported without blocking the CI
+    continue-on-error: ${{ matrix.discordjs == 'dev' }}
+    strategy:
+      fail-fast: false
+      matrix:
+        # 14.0 is the oldest supported, 14.21 the last one with the "ready" event, then the latest v14 and v15
+        discordjs: ["~14.0.0", "~14.21.0", "^14", "dev"]
+        runtime: [node-18, node-20, node-22, node-24, bun]
+        exclude:
+          # discord.js v15 needs Node.js 24
+          - discordjs: dev
+            runtime: node-18
+          - discordjs: dev
+            runtime: node-20
+          - discordjs: dev
+            runtime: node-22
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Setup Node.js
+        if: startsWith(matrix.runtime, 'node-')
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.runtime == 'node-18' && '18' || matrix.runtime == 'node-20' && '20' || matrix.runtime == 'node-22' && '22' || '24' }}
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Install discord.js ${{ matrix.discordjs }}
+        run: bun add --dev "discord.js@${{ matrix.discordjs }}"
+
+      - name: Build
+        run: bun run build
+
+      - name: Run tests
+        if: matrix.runtime == 'bun'
+        run: bun run test
+
+      - name: Load the build in ESM and CommonJS with Node.js
+        if: startsWith(matrix.runtime, 'node-')
+        run: bun run test:smoke
+
+      - name: Load the build in ESM and CommonJS with Bun
+        if: matrix.runtime == 'bun'
+        run: bun test/smoke/esm.mjs && bun test/smoke/cjs.cjs

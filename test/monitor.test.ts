@@ -1,4 +1,6 @@
 import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
+import { version as discordJsVersion } from "discord.js";
+import { readyEventName } from "../src/compat.ts";
 import { ShardMonitor } from "../src/monitor.ts";
 import { remoteSampling, setRemoteSampling } from "../src/sampling.ts";
 import { chatInput, FakeClient, fakeDashboard, sleep, waitFor } from "./helpers.ts";
@@ -103,7 +105,7 @@ describe("ShardMonitor", () => {
 		expect(api.requests).toHaveLength(0);
 
 		client.ready = true;
-		client.emit("clientReady");
+		client.emit(readyEventName(discordJsVersion));
 		await waitFor(() => api.requests.length === 1);
 	});
 

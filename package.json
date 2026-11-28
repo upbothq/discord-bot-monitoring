@@ -84,6 +84,7 @@
 		"release": "bumpp --commit --push --tag",
 		"test": "bun test",
 		"test:coverage": "bun test --coverage",
+		"test:smoke": "node test/smoke/esm.mjs && node test/smoke/cjs.cjs",
 		"test:watch": "bun test --watch",
 		"type-check": "tsc --noEmit"
 	},
