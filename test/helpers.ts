@@ -127,3 +127,40 @@ export async function waitFor(condition: () => boolean, timeoutMs = 2_000): Prom
 		await sleep(10);
 	}
 }
+
+/**
+ * A discord.js v15 client: no per shard sockets, the WebSocketManager of @discordjs/ws gives the
+ * shard ids and their status, the client keeps their latency.
+ */
+export class FakeV15Client extends EventEmitter {
+	ready = true;
+	uptime = 1_000;
+	user = { tag: "bot#0001" };
+	options: Record<string, unknown> = {};
+	shard: { ids: number[]; count: number } | null = null;
+	rest = new EventEmitter();
+	/** Values of the @discordjs/ws WebSocketShardStatus enum: 0 idle, 1 connecting, 2 resuming, 3 ready. */
+	statuses = new Map<number, number>();
+	fetchStatus: () => unknown = () => Promise.resolve(new Map(this.statuses));
+	ws = Object.assign(new EventEmitter(), {
+		options: { shardCount: 2 as number | null },
+		getShardIds: () => [...this.statuses.keys()],
+		fetchStatus: () => this.fetchStatus(),
+	});
+	pings = new Map<number, number>();
+	guilds = { cache: new Map<string, { shardId: number; memberCount: number }>() };
+
+	get ping(): number | null {
+		return this.pings.size
+			? [...this.pings.values()].reduce((a, b) => a + b, 0) / this.pings.size
+			: null;
+	}
+
+	isReady(): boolean {
+		return this.ready;
+	}
+
+	asClient(): Client {
+		return this as unknown as Client;
+	}
+}

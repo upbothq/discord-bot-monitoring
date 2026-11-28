@@ -1,12 +1,13 @@
 import { describe, expect, test } from "bun:test";
 import {
+	fetchSocketStatuses,
 	ownedShardIds,
 	readyEventName,
 	shardPing,
 	socketStatus,
 	totalShardCount,
 } from "../src/compat.ts";
-import { FakeClient } from "./helpers.ts";
+import { FakeClient, FakeV15Client } from "./helpers.ts";
 
 describe("discord.js compatibility", () => {
 	test("picks the ready event of each version", () => {
@@ -66,5 +67,50 @@ describe("discord.js compatibility", () => {
 
 		expect(socketStatus(client.asClient(), 0)).toBeUndefined();
 		expect(shardPing(client.asClient(), 0)).toBe(40);
+	});
+
+	test("reads the shards of the discord.js v15 WebSocketManager", async () => {
+		const client = new FakeV15Client();
+
+		client.statuses = new Map([
+			[1, 3],
+			[0, 0],
+			[2, 2],
+		]);
+		client.ws.options.shardCount = 4;
+		client.pings.set(1, 25);
+		client.pings.set(2, 35);
+
+		expect(ownedShardIds(client.asClient())).toEqual([0, 1, 2]);
+		expect(totalShardCount(client.asClient())).toBe(4);
+		expect(shardPing(client.asClient(), 1)).toBe(25);
+		// No latency yet for shard 0: the client average
+		expect(shardPing(client.asClient(), 0)).toBe(30);
+		expect(socketStatus(client.asClient(), 1)).toBeUndefined();
+		expect(await fetchSocketStatuses(client.asClient())).toEqual(
+			new Map([
+				[1, "online"],
+				[0, "offline"],
+				[2, "reconnecting"],
+			]),
+		);
+	});
+
+	test("leaves the v14 sockets to the synchronous status", async () => {
+		expect(await fetchSocketStatuses(new FakeClient().asClient())).toBeUndefined();
+	});
+
+	test("gives up on a v15 status that fails or takes too long", async () => {
+		const client = new FakeV15Client();
+
+		client.fetchStatus = () => Promise.reject(new Error("worker gone"));
+		expect(await fetchSocketStatuses(client.asClient())).toBeUndefined();
+
+		client.fetchStatus = () => new Promise(() => {});
+		expect(await fetchSocketStatuses(client.asClient(), 20)).toBeUndefined();
+	});
+
+	test("knows no latency before a v15 client connects", () => {
+		expect(shardPing(new FakeV15Client().asClient(), 0)).toBe(-1);
 	});
 });

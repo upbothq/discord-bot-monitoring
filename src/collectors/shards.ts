@@ -1,22 +1,26 @@
 import type { Client } from "discord.js";
-import { ownedShardIds, shardPing, socketStatus } from "../compat.ts";
+import { fetchSocketStatuses, ownedShardIds, shardPing, socketStatus } from "../compat.ts";
 import { logger } from "../logger.ts";
 import type { ShardPayload, ShardStatus } from "../types.ts";
 import { Listeners } from "./listeners.ts";
 
 /**
- * Follows the status of every shard owned by this process. The live socket status wins when the
- * discord.js version exposes it, shard events cover the versions that do not.
+ * Follows the status of every shard owned by this process. The live socket status wins: read on
+ * the spot on v14, fetched before each report on v15. Shard events cover the versions with neither.
  */
 export class ShardCollector {
 	private readonly lastEvent = new Map<number, ShardStatus>();
 	private readonly listeners: Listeners;
+	private readonly gatewayListeners: Listeners;
+	private live: Map<number, ShardStatus> | undefined;
 
 	constructor(
 		private readonly client: Client,
 		private readonly onStatusChange: () => void,
 	) {
 		this.listeners = new Listeners(client as never);
+		// v15 emits no shard event on the client, its WebSocketManager does
+		this.gatewayListeners = new Listeners((client as unknown as { ws?: unknown }).ws as never);
 	}
 
 	register(): void {
@@ -27,10 +31,25 @@ export class ShardCollector {
 			this.record(id, "offline"),
 		);
 		this.listeners.on("shardError", (_error: unknown, id: number) => this.record(id, "error"));
+
+		// Only a hint that a status changed: the report fetches the status itself
+		if (
+			typeof (this.client.ws as unknown as { fetchStatus?: unknown }).fetchStatus === "function"
+		) {
+			for (const event of ["ready", "resumed", "closed"]) {
+				this.gatewayListeners.on(event, () => this.onStatusChange());
+			}
+		}
 	}
 
 	unregister(): void {
 		this.listeners.removeAll();
+		this.gatewayListeners.removeAll();
+	}
+
+	/** Reads the live status of the shards when this discord.js version only gives it asynchronously. */
+	async refresh(): Promise<void> {
+		this.live = await fetchSocketStatuses(this.client);
 	}
 
 	snapshot(forcedStatus?: ShardStatus): ShardPayload[] {
@@ -61,6 +80,7 @@ export class ShardCollector {
 	private statusOf(id: number): ShardStatus {
 		return (
 			socketStatus(this.client, id) ??
+			this.live?.get(id) ??
 			this.lastEvent.get(id) ??
 			(this.client.isReady() ? "online" : "offline")
 		);

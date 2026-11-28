@@ -58,16 +58,88 @@ export function socketStatus(client: Client, shardId: number): ShardStatus | und
 	return "reconnecting";
 }
 
+interface GatewayManager {
+	getShardIds?: () => unknown;
+	fetchStatus?: () => unknown;
+	options?: { shardCount?: unknown };
+}
+
+/** v15 hands the gateway to the WebSocketManager of @discordjs/ws, which has no per shard sockets. */
+function gatewayManager(client: Client): GatewayManager | undefined {
+	return (client as unknown as { ws?: GatewayManager }).ws;
+}
+
+// Values of the @discordjs/ws `WebSocketShardStatus` enum used by v15, which differ from the v14 ones
+const WS_IDLE = 0;
+const WS_READY = 3;
+
+/** A status request to the shard workers must not hold a report back. */
+const FETCH_STATUS_TIMEOUT_MS = 1_000;
+
+/**
+ * Live status of every shard on discord.js v15, which only gives it asynchronously. Undefined when
+ * this version exposes per shard sockets instead, or when the status cannot be read in time.
+ */
+export async function fetchSocketStatuses(
+	client: Client,
+	timeoutMs: number = FETCH_STATUS_TIMEOUT_MS,
+): Promise<Map<number, ShardStatus> | undefined> {
+	const manager = gatewayManager(client);
+
+	if (legacyShards(client) || typeof manager?.fetchStatus !== "function") {
+		return undefined;
+	}
+
+	let timer: ReturnType<typeof setTimeout> | undefined;
+
+	try {
+		const statuses = await Promise.race([
+			Promise.resolve(manager.fetchStatus()),
+			new Promise<undefined>((resolve) => {
+				timer = setTimeout(() => resolve(undefined), timeoutMs);
+				timer?.unref?.();
+			}),
+		]);
+
+		if (!statuses || typeof (statuses as Map<unknown, unknown>).entries !== "function") {
+			return undefined;
+		}
+
+		const result = new Map<number, ShardStatus>();
+
+		for (const [id, status] of (statuses as Map<unknown, unknown>).entries()) {
+			if (typeof id !== "number" || typeof status !== "number") continue;
+
+			result.set(
+				id,
+				status === WS_READY ? "online" : status === WS_IDLE ? "offline" : "reconnecting",
+			);
+		}
+
+		return result;
+	} catch {
+		return undefined;
+	} finally {
+		clearTimeout(timer);
+	}
+}
+
 /** Gateway latency of one shard, falling back to the client average, -1 when unknown. */
 export function shardPing(client: Client, shardId: number): number {
-	const ping = legacyShards(client)?.get?.(shardId)?.ping;
+	const ping =
+		legacyShards(client)?.get?.(shardId)?.ping ??
+		// v15 keeps the latency of each shard on the client
+		(client as unknown as { pings?: { get?: (id: number) => unknown } }).pings?.get?.(shardId);
 
 	if (typeof ping === "number" && Number.isFinite(ping)) {
 		return Math.round(ping);
 	}
 
-	// The v14 average is NaN while no shard is connected
-	const average = (client.ws as unknown as { ping?: unknown }).ping;
+	// The v14 average lives on the manager and is NaN while no shard is connected, the v15 one on
+	// the client and is null
+	const average =
+		(client.ws as unknown as { ping?: unknown }).ping ??
+		(client as unknown as { ping?: unknown }).ping;
 
 	return typeof average === "number" && Number.isFinite(average) ? Math.round(average) : -1;
 }
@@ -84,9 +156,20 @@ export function ownedShardIds(client: Client): number[] {
 	}
 
 	const internal = legacyShards(client)?.keys?.();
-	const ids = internal ? [...internal] : [];
+	const ids = internal ? [...internal] : managerShardIds(client);
 
 	return ids.length > 0 ? ids.sort((a, b) => a - b) : [0];
+}
+
+/** v15 shard ids, known once the client connected. */
+function managerShardIds(client: Client): number[] {
+	try {
+		const ids = gatewayManager(client)?.getShardIds?.();
+
+		return Array.isArray(ids) ? ids.filter((id): id is number => typeof id === "number") : [];
+	} catch {
+		return [];
+	}
 }
 
 export function totalShardCount(client: Client): number {
@@ -96,7 +179,10 @@ export function totalShardCount(client: Client): number {
 		return managed;
 	}
 
-	const configured = (client.options as { shardCount?: unknown }).shardCount;
+	// v14 keeps the count in the client options, v15 in the WebSocketManager ones
+	const configured =
+		(client.options as { shardCount?: unknown }).shardCount ??
+		gatewayManager(client)?.options?.shardCount;
 
 	return typeof configured === "number" && configured > 0
 		? configured

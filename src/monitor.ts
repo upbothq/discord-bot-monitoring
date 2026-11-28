@@ -259,6 +259,9 @@ export class ShardMonitor {
 
 		if (!transport) return undefined;
 
+		// A shutdown report sets every shard offline, it does not wait for their status
+		if (!forcedStatus) await this.shards.refresh();
+
 		const interactions = this.interactions?.snapshot() ?? [];
 		const api = this.rateLimits?.snapshot() ?? { rateLimits: [], invalidRequests: 0 };
 		const guildIssues = this.issues.snapshot();

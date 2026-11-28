@@ -3,7 +3,7 @@ import { version as discordJsVersion } from "discord.js";
 import { readyEventName } from "../src/compat.ts";
 import { ShardMonitor } from "../src/monitor.ts";
 import { remoteSampling, setRemoteSampling } from "../src/sampling.ts";
-import { chatInput, FakeClient, fakeDashboard, sleep, waitFor } from "./helpers.ts";
+import { chatInput, FakeClient, fakeDashboard, FakeV15Client, sleep, waitFor } from "./helpers.ts";
 
 let monitors: ShardMonitor[] = [];
 let dashboards: { stop: () => unknown }[] = [];
@@ -132,6 +132,37 @@ describe("ShardMonitor", () => {
 
 		expect(api.requests[1]?.body.interactions).toMatchObject([
 			{ type: "chat_input", name: "/ping", calls: 1 },
+		]);
+	});
+
+	test("reports the live shard status of discord.js v15", async () => {
+		const api = dashboard();
+		const client = new FakeV15Client();
+
+		client.statuses = new Map([
+			[0, 3],
+			[1, 2],
+		]);
+		client.pings.set(0, 12);
+		client.guilds.cache.set("a", { shardId: 1, memberCount: 4 });
+
+		monitor({ client: client.asClient(), token: "secret", endpoint: api.url });
+		await waitFor(() => api.requests.length === 1);
+
+		expect(api.requests[0]?.body.shard_count).toBe(2);
+		expect(api.requests[0]?.body.shards).toEqual([
+			{ shard_id: 0, status: "online", guild_count: 0, member_count: 0, ping: 12 },
+			{ shard_id: 1, status: "reconnecting", guild_count: 1, member_count: 4, ping: 12 },
+		]);
+
+		// The manager tells a shard closed, the next report comes about a second later
+		client.statuses.set(0, 0);
+		client.ws.emit("closed", 1000, 0);
+		await waitFor(() => api.requests.length === 2, 3_000);
+
+		expect(api.requests[1]?.body.shards).toMatchObject([
+			{ shard_id: 0, status: "offline" },
+			{ shard_id: 1, status: "reconnecting" },
 		]);
 	});
 
